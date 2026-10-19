@@ -48,10 +48,28 @@ export default function TestsPage() {
     fetchTests();
   }, [fetchTests]);
 
+  // Helper to resolve category ID for each item
+  const getItemCategoryId = useCallback(
+    (item: any) => {
+      return (
+        item.test_series?.category_id ||
+        seriesList.find((s) => s.id === item.series_id)?.category_id ||
+        null
+      );
+    },
+    [seriesList]
+  );
+
   const filteredItems = items.filter((item) => {
     if (selectedCategory === "all") return true;
-    return item.test_series?.category_id === selectedCategory;
+    return getItemCategoryId(item) === selectedCategory;
   });
+
+  const getCategoryCount = (catId: string) => {
+    return items.filter((item) => getItemCategoryId(item) === catId).length;
+  };
+
+  const selectedCategoryObj = categories.find((c) => c.id === selectedCategory);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#090b14] flex flex-col">
@@ -64,9 +82,17 @@ export default function TestsPage() {
             <Languages className="w-3.5 h-3.5" />
             <span>Bilingual (English & Hindi)</span>
           </div>
-          <h2 className="text-base font-bold">NIELIT CCC Full Mock Tests</h2>
+          <h2 className="text-base font-bold">
+            {selectedCategory === "all"
+              ? "NIELIT CCC Full Mock Tests"
+              : selectedCategoryObj?.title || "CCC Practice Tests"}
+          </h2>
           <p className="text-xs text-slate-300 mt-0.5">
-            100 questions per set with genuine CCC exam pattern & scoring.
+            {selectedCategory === "all"
+              ? "All official NIELIT CCC practice sets & chapter tests."
+              : `Showing ${filteredItems.length} test set${
+                  filteredItems.length === 1 ? "" : "s"
+                } in this category.`}
           </p>
         </div>
 
@@ -78,30 +104,51 @@ export default function TestsPage() {
                 setSelectedCategory("all");
                 triggerHaptic("selection");
               }}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1.5 ${
                 selectedCategory === "all"
                   ? "bg-primary-600 text-white shadow-xs"
                   : "bg-white dark:bg-[#121626] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800"
               }`}
             >
-              All Sets ({items.length})
-            </button>
-            {categories.map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => {
-                  setSelectedCategory(cat.id);
-                  triggerHaptic("selection");
-                }}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                  selectedCategory === cat.id
-                    ? "bg-primary-600 text-white shadow-xs"
-                    : "bg-white dark:bg-[#121626] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800"
+              <span>All Sets</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  selectedCategory === "all"
+                    ? "bg-white/20 text-white"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
                 }`}
               >
-                {cat.title}
-              </button>
-            ))}
+                {items.length}
+              </span>
+            </button>
+            {categories.map((cat) => {
+              const count = getCategoryCount(cat.id);
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => {
+                    setSelectedCategory(cat.id);
+                    triggerHaptic("selection");
+                  }}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    selectedCategory === cat.id
+                      ? "bg-primary-600 text-white shadow-xs"
+                      : "bg-white dark:bg-[#121626] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800"
+                  }`}
+                >
+                  <span>{cat.title}</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      selectedCategory === cat.id
+                        ? "bg-white/20 text-white"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -122,7 +169,7 @@ export default function TestsPage() {
             </p>
             <button
               onClick={fetchTests}
-              className="px-3.5 py-1.5 bg-rose-600 text-white rounded-xl text-xs font-semibold"
+              className="px-3.5 py-1.5 bg-rose-600 text-white rounded-xl text-xs font-semibold cursor-pointer"
             >
               Retry
             </button>
@@ -134,11 +181,17 @@ export default function TestsPage() {
           <div className="text-center py-12 bg-white dark:bg-[#121626] border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6">
             <Layers className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">
-              No Test Sets Found
+              No Test Sets Found in This Category
             </h4>
-            <p className="text-xs text-slate-400 mt-1">
-              Try selecting another category or check back later.
+            <p className="text-xs text-slate-400 mt-1 mb-4">
+              Tests for this category will be available soon.
             </p>
+            <button
+              onClick={() => setSelectedCategory("all")}
+              className="px-4 py-2 bg-primary-600 text-white text-xs font-bold rounded-xl cursor-pointer shadow-xs active:scale-95 transition-transform"
+            >
+              View All Sets ({items.length})
+            </button>
           </div>
         )}
 

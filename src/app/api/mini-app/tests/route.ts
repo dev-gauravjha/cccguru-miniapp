@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const [categories, seriesList, items] = await Promise.all([
     getTestCategories(),
     getTestSeries({ categoryId }),
-    getTestSeriesItems(seriesId),
+    getTestSeriesItems(seriesId, categoryId),
   ]);
 
   return NextResponse.json({

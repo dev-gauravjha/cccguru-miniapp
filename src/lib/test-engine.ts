@@ -70,12 +70,13 @@ export async function getTestSeries(options?: {
  * Fetch test series items for a specific series or all published items
  */
 export async function getTestSeriesItems(
-  seriesId?: string
+  seriesId?: string,
+  categoryId?: string
 ): Promise<TestSeriesItem[]> {
   const supabase = getSupabaseAdminClient();
   let query = supabase
     .from("test_series_items")
-    .select("*, test_series(id, title, slug, is_paid, price)")
+    .select("*, test_series(id, title, slug, is_paid, price, category_id)")
     .eq("is_published", true)
     .order("sort_order", { ascending: true });
 
@@ -88,6 +89,13 @@ export async function getTestSeriesItems(
     console.error("getTestSeriesItems error:", error.message);
     return [];
   }
+
+  if (categoryId) {
+    return (data ?? []).filter(
+      (item: any) => item.test_series?.category_id === categoryId
+    );
+  }
+
   return data ?? [];
 }
 
@@ -104,7 +112,7 @@ export async function getTestSeriesItemById(
   if (isUuid) {
     const { data } = await supabase
       .from("test_series_items")
-      .select("*, test_series(id, title, slug, is_paid, price)")
+      .select("*, test_series(id, title, slug, is_paid, price, category_id)")
       .eq("id", id)
       .maybeSingle();
 
@@ -114,7 +122,7 @@ export async function getTestSeriesItemById(
   // Lookup across published items if slug or title matches
   const { data: allItems } = await supabase
     .from("test_series_items")
-    .select("*, test_series(id, title, slug, is_paid, price)")
+    .select("*, test_series(id, title, slug, is_paid, price, category_id)")
     .eq("is_published", true);
 
   if (!allItems) return null;
