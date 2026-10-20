@@ -19,6 +19,8 @@ export const viewport: Viewport = {
   themeColor: "#6610f2",
 };
 
+const MONETAG_ZONE_ID = process.env.NEXT_PUBLIC_MONETAG_ZONE_ID || "12075938";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -34,6 +36,14 @@ export default function RootLayout({
           src="https://telegram.org/js/telegram-web-app.js"
           strategy="afterInteractive"
         />
+        {MONETAG_ZONE_ID && (
+          <Script
+            src="https://libtl.com/sdk.js"
+            data-zone={MONETAG_ZONE_ID}
+            data-sdk={`show_${MONETAG_ZONE_ID}`}
+            strategy="afterInteractive"
+          />
+        )}
         <TelegramProvider>
           <main className="flex-1 pb-20">{children}</main>
           <BottomNav />
@@ -42,3 +52,4 @@ export default function RootLayout({
     </html>
   );
 }
+

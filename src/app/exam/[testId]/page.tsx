@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useTelegram } from "@/components/providers/TelegramProvider";
 import { formatTimer, getDifficultyColor } from "@/lib/utils";
+import { showPostSubmissionAd, preloadMonetagAd } from "@/lib/monetag";
 import type { SanitizedQuestion, TestSeriesItem } from "@/types/database";
 
 type LanguageMode = "en" | "hi" | "both";
@@ -30,10 +31,11 @@ interface ExamPageProps {
 export default function ExamPage({ params }: ExamPageProps) {
   const { testId } = use(params);
   const router = useRouter();
-  const { triggerHaptic, setBackButton } = useTelegram();
+  const { triggerHaptic, setBackButton, session, user } = useTelegram();
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [submittingStatus, setSubmittingStatus] = useState<string>("Evaluating...");
 
   const [attemptId, setAttemptId] = useState<string>("");
   const [testItem, setTestItem] = useState<TestSeriesItem | null>(null);
@@ -249,13 +251,24 @@ export default function ExamPage({ params }: ExamPageProps) {
     setIsPaletteOpen(false);
   };
 
+  // Open Submit Confirmation Modal & Preload Ad Creative
+  const openSubmitModal = () => {
+    setShowSubmitModal(true);
+    preloadMonetagAd({
+      ymid: session?.studentId || (user ? String(user.id) : undefined),
+      requestVar: "exam_submit",
+    });
+  };
+
   // Final Submit
   const handleFinalSubmit = async () => {
     if (isSubmitting || !attemptId) return;
     setIsSubmitting(true);
+    setSubmittingStatus("Evaluating & Saving Answers...");
     triggerHaptic("medium");
 
     try {
+      // 1. Submit answers and evaluate on server
       const res = await fetch(`/api/mini-app/attempts/${attemptId}/submit`, {
         method: "POST",
       });
@@ -264,11 +277,28 @@ export default function ExamPage({ params }: ExamPageProps) {
         throw new Error("Failed to evaluate test attempt");
       }
 
+      // 2. Answers and evaluation are safely saved in DB!
+      // Update submitting status before ad trigger
+      setSubmittingStatus("Preparing Official Result...");
+
+      // 3. Trigger Monetag Post-Submission Interstitial ad
+      try {
+        await showPostSubmissionAd({
+          studentId: session?.studentId || (user ? String(user.id) : undefined),
+          attemptId,
+          maxWaitMs: 6000,
+        });
+      } catch (adErr) {
+        console.warn("[Monetag] Post-submission ad notice:", adErr);
+      }
+
+      // 4. Guarantee navigation to results regardless of ad status
       triggerHaptic("success");
       router.push(`/results/${attemptId}`);
     } catch (err: any) {
       alert(err.message || "Submission failed. Please try again.");
       setIsSubmitting(false);
+      setSubmittingStatus("Evaluating...");
     }
   };
 
@@ -524,7 +554,7 @@ export default function ExamPage({ params }: ExamPageProps) {
 
           {/* Submit Test Trigger */}
           <button
-            onClick={() => setShowSubmitModal(true)}
+            onClick={openSubmitModal}
             className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-transform cursor-pointer"
           >
             <Send className="w-4 h-4" />
@@ -537,7 +567,7 @@ export default function ExamPage({ params }: ExamPageProps) {
               if (currentIndex < questions.length - 1) {
                 handleNavigate(currentIndex + 1);
               } else {
-                setShowSubmitModal(true);
+                openSubmitModal();
               }
             }}
             className="flex-1 bg-primary-600 hover:bg-primary-700 text-white py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-transform cursor-pointer"
@@ -656,17 +686,21 @@ export default function ExamPage({ params }: ExamPageProps) {
             <div className="flex items-center gap-2 pt-2">
               <button
                 onClick={() => setShowSubmitModal(false)}
-                className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold"
+                disabled={isSubmitting}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold disabled:opacity-50"
               >
                 Continue Test
               </button>
               <button
                 onClick={handleFinalSubmit}
                 disabled={isSubmitting}
-                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1 shadow-sm"
+                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-60"
               >
                 {isSubmitting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>{submittingStatus}</span>
+                  </>
                 ) : (
                   <span>Submit Now</span>
                 )}

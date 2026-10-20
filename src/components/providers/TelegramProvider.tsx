@@ -12,6 +12,7 @@ import type {
   TelegramUser,
   StudentSession,
 } from "@/types/telegram";
+import { initMonetagInAppScheduler } from "@/lib/monetag";
 
 interface TelegramContextValue {
   webApp: TelegramWebApp | null;
@@ -227,6 +228,13 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
 
     return () => clearInterval(interval);
   }, [checkSession, initTelegram, loginAsPreview]);
+
+  // 4. Initialize Monetag In-App Interstitial Scheduler once per application lifecycle
+  useEffect(() => {
+    if (isReady) {
+      initMonetagInAppScheduler();
+    }
+  }, [isReady]);
 
   return (
     <TelegramContext.Provider
