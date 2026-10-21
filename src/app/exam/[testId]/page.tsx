@@ -16,10 +16,20 @@ import {
   Loader2,
   Send,
   HelpCircle,
+  Volume2,
+  VolumeX,
+  Sparkles,
+  Star,
+  Trophy,
 } from "lucide-react";
 import { useTelegram } from "@/components/providers/TelegramProvider";
 import { formatTimer, getDifficultyColor } from "@/lib/utils";
 import { showPostSubmissionAd, preloadMonetagAd } from "@/lib/monetag";
+import {
+  playTapSound,
+  isSoundEnabled,
+  setSoundEnabled,
+} from "@/lib/quiz-sounds";
 import type { SanitizedQuestion, TestSeriesItem } from "@/types/database";
 
 type LanguageMode = "en" | "hi" | "both";
@@ -35,12 +45,16 @@ export default function ExamPage({ params }: ExamPageProps) {
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [submittingStatus, setSubmittingStatus] = useState<string>("Evaluating...");
+  const [submittingStatus, setSubmittingStatus] =
+    useState<string>("Evaluating...");
 
   const [attemptId, setAttemptId] = useState<string>("");
   const [testItem, setTestItem] = useState<TestSeriesItem | null>(null);
   const [questions, setQuestions] = useState<SanitizedQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
+
+  // Sound toggle state
+  const [soundOn, setSoundOn] = useState(true);
 
   // User answers map: questionId -> { selectedOption, isFlagged, timeSpent }
   const [userAnswers, setUserAnswers] = useState<
@@ -62,6 +76,19 @@ export default function ExamPage({ params }: ExamPageProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const questionStartTime = useRef<number>(Date.now());
+
+  // Initialize sound state from localStorage
+  useEffect(() => {
+    setSoundOn(isSoundEnabled());
+  }, []);
+
+  const toggleSound = () => {
+    const next = !soundOn;
+    setSoundOn(next);
+    setSoundEnabled(next);
+    if (next) playTapSound();
+    triggerHaptic("selection");
+  };
 
   // 1. Initialize Test Attempt on Server
   const initAttempt = useCallback(async () => {
@@ -95,7 +122,6 @@ export default function ExamPage({ params }: ExamPageProps) {
       setQuestions(data.questions);
       setTimeLeft((data.durationMinutes || 90) * 60);
 
-
       // Prepopulate empty answers state
       const initialMap: typeof userAnswers = {};
       data.questions.forEach((q: SanitizedQuestion) => {
@@ -111,7 +137,7 @@ export default function ExamPage({ params }: ExamPageProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [testId]);
+  }, [testId, router]);
 
   useEffect(() => {
     initAttempt();
@@ -151,7 +177,7 @@ export default function ExamPage({ params }: ExamPageProps) {
       questionId: string,
       selectedOption: "A" | "B" | "C" | "D" | null,
       isFlagged: boolean,
-      timeSpentDelta: number
+      timeSpentDelta: number,
     ) => {
       if (!attemptId) return;
       try {
@@ -169,7 +195,7 @@ export default function ExamPage({ params }: ExamPageProps) {
         // Silently preserve locally
       }
     },
-    [attemptId]
+    [attemptId],
   );
 
   const currentQ = questions[currentIndex];
@@ -178,6 +204,7 @@ export default function ExamPage({ params }: ExamPageProps) {
   // Handle Option Selection
   const handleSelectOption = (option: "A" | "B" | "C" | "D") => {
     if (!currentQ) return;
+    playTapSound();
     triggerHaptic("selection");
 
     const elapsed = Math.floor((Date.now() - questionStartTime.current) / 1000);
@@ -201,6 +228,7 @@ export default function ExamPage({ params }: ExamPageProps) {
   // Toggle Flag / Mark for Review
   const handleToggleFlag = () => {
     if (!currentQ) return;
+    playTapSound();
     triggerHaptic("medium");
 
     const elapsed = Math.floor((Date.now() - questionStartTime.current) / 1000);
@@ -224,6 +252,7 @@ export default function ExamPage({ params }: ExamPageProps) {
   // Clear current response
   const handleClearResponse = () => {
     if (!currentQ) return;
+    playTapSound();
     triggerHaptic("light");
 
     setUserAnswers((prev) => ({
@@ -235,17 +264,14 @@ export default function ExamPage({ params }: ExamPageProps) {
       },
     }));
 
-    persistAnswerToServer(
-      currentQ.id,
-      null,
-      currentAns?.isFlagged || false,
-      0
-    );
+    persistAnswerToServer(currentQ.id, null, currentAns?.isFlagged || false, 0);
   };
 
   // Navigation
   const handleNavigate = (index: number) => {
     if (index < 0 || index >= questions.length) return;
+    playTapSound();
+    triggerHaptic("selection");
     const elapsed = Math.floor((Date.now() - questionStartTime.current) / 1000);
     questionStartTime.current = Date.now();
 
@@ -254,7 +280,7 @@ export default function ExamPage({ params }: ExamPageProps) {
         currentQ.id,
         currentAns?.selectedOption || null,
         currentAns?.isFlagged || false,
-        elapsed
+        elapsed,
       );
     }
 
@@ -264,6 +290,7 @@ export default function ExamPage({ params }: ExamPageProps) {
 
   // Open Submit Confirmation Modal & Preload Ad Creative
   const openSubmitModal = () => {
+    playTapSound();
     setShowSubmitModal(true);
     preloadMonetagAd({
       ymid: session?.studentId || (user ? String(user.id) : undefined),
@@ -317,15 +344,17 @@ export default function ExamPage({ params }: ExamPageProps) {
 
   // Palette counts
   const answeredCount = Object.values(userAnswers).filter(
-    (a) => a.selectedOption !== null
+    (a) => a.selectedOption !== null,
   ).length;
   const flaggedCount = Object.values(userAnswers).filter(
-    (a) => a.isFlagged
+    (a) => a.isFlagged,
   ).length;
   const unansweredCount = questions.length - answeredCount;
 
   // Detect True/False options vs 4-option MCQ
-  const getAvailableOptions = (q: SanitizedQuestion): ("A" | "B" | "C" | "D")[] => {
+  const getAvailableOptions = (
+    q: SanitizedQuestion,
+  ): ("A" | "B" | "C" | "D")[] => {
     const isTF =
       q.question_type === "True/False" ||
       (!q.option_c_en?.trim() && !q.option_c_hi?.trim());
@@ -335,12 +364,16 @@ export default function ExamPage({ params }: ExamPageProps) {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-[#090b14] flex flex-col items-center justify-center p-6 text-center">
-        <Loader2 className="w-10 h-10 animate-spin text-primary-600 mb-3" />
-        <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
-          Preparing Your Test Session...
+        <div className="relative mb-4">
+          <div className="w-16 h-16 rounded-3xl bg-primary-100 dark:bg-primary-950 flex items-center justify-center border-2 border-primary-500/30 shadow-lg">
+            <Loader2 className="w-8 h-8 animate-spin text-primary-600 dark:text-primary-400" />
+          </div>
+        </div>
+        <h3 className="text-base font-black text-slate-800 dark:text-slate-100 tracking-tight">
+          Preparing Your Exam Challenge...
         </h3>
-        <p className="text-xs text-slate-500 mt-1 max-w-xs">
-          Loading official questions and synchronizing exam timer.
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xs leading-relaxed">
+          Loading authentic questions and synchronizing exam countdown timer.
         </p>
       </div>
     );
@@ -349,8 +382,10 @@ export default function ExamPage({ params }: ExamPageProps) {
   if (error || !currentQ) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-[#090b14] flex flex-col items-center justify-center p-6 text-center">
-        <AlertTriangle className="w-10 h-10 text-rose-500 mb-3" />
-        <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
+        <div className="w-16 h-16 rounded-3xl bg-rose-100 dark:bg-rose-950/70 border-2 border-rose-500/30 flex items-center justify-center text-rose-500 mb-4 shadow-lg">
+          <AlertTriangle className="w-8 h-8" />
+        </div>
+        <h3 className="text-base font-black text-slate-800 dark:text-slate-100">
           Unable to Start Exam
         </h3>
         <p className="text-xs text-rose-600 dark:text-rose-400 mt-1 max-w-xs mb-4">
@@ -358,9 +393,9 @@ export default function ExamPage({ params }: ExamPageProps) {
         </p>
         <button
           onClick={() => router.back()}
-          className="bg-primary-600 text-white px-4 py-2 rounded-xl text-xs font-bold"
+          className="btn-3d btn-3d-primary px-5 py-2.5 rounded-2xl text-xs font-black shadow-md cursor-pointer"
         >
-          Return to Dashboard
+          Return to Tests
         </button>
       </div>
     );
@@ -370,108 +405,145 @@ export default function ExamPage({ params }: ExamPageProps) {
   const availableOptions = getAvailableOptions(currentQ);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#090b14] flex flex-col justify-between max-w-md mx-auto">
-      {/* 1. Exam Header Bar */}
-      <div className="sticky top-0 z-30 bg-white/95 dark:bg-[#0e1222]/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 px-4 py-3 flex items-center justify-between">
-        {/* Left: Palette Trigger */}
+    <div className="h-screen h-[100dvh] max-h-[100dvh] bg-slate-50 dark:bg-[#090b14] flex flex-col max-w-md mx-auto relative select-none overflow-hidden">
+      {/* 1. Gamified Header Bar */}
+      <div className="shrink-0 z-30 bg-white/95 dark:bg-[#0e1222]/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 px-3.5 py-2.5 flex items-center justify-between gap-2 shadow-xs">
+        {/* Question Map Trigger (Tactile 3D button) */}
         <button
-          onClick={() => setIsPaletteOpen(true)}
-          className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-xl text-sm font-bold active:scale-95 transition-transform cursor-pointer"
+          onClick={() => {
+            playTapSound();
+            setIsPaletteOpen(true);
+          }}
+          className="btn-3d btn-3d-slate flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer"
+          title="Open Question Map"
         >
-          <Layers className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+          <Layers className="w-3.5 h-3.5 text-primary-600 dark:text-primary-400" />
           <span>
-            {currentIndex + 1}/{questions.length}
+            Q {currentIndex + 1}/{questions.length}
           </span>
         </button>
 
         {/* Center: Live Countdown Timer */}
         <div
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-mono font-bold tracking-wider ${
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-black tracking-wider transition-all ${
             isTimerCritical
-              ? "bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 animate-pulse border border-rose-300"
-              : "bg-primary-50 dark:bg-primary-950/60 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-800"
+              ? "bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 animate-pulse border-2 border-rose-400 shadow-sm"
+              : "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800"
           }`}
         >
-          <Clock className="w-4 h-4" />
+          <Clock className="w-3.5 h-3.5" />
           <span>{formatTimer(timeLeft)}</span>
         </div>
 
-        {/* Right: Language Switcher */}
-        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs font-semibold">
+        {/* Right Action Group: Sound Toggle & Language Switcher */}
+        <div className="flex items-center gap-1.5">
+          {/* Sound Toggle */}
           <button
-            onClick={() => setLanguageMode("en")}
-            className={`px-2 py-1 rounded-lg ${
-              languageMode === "en"
-                ? "bg-white dark:bg-slate-700 text-primary-600 font-bold shadow-2xs"
-                : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+            onClick={toggleSound}
+            className={`w-7 h-7 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
+              soundOn
+                ? "bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-800 text-amber-600 dark:text-amber-400"
+                : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400"
             }`}
+            title={soundOn ? "Mute Sound" : "Enable Sound"}
           >
-            EN
+            {soundOn ? (
+              <Volume2 className="w-3.5 h-3.5" />
+            ) : (
+              <VolumeX className="w-3.5 h-3.5" />
+            )}
           </button>
-          <button
-            onClick={() => setLanguageMode("hi")}
-            className={`px-2 py-1 rounded-lg ${
-              languageMode === "hi"
-                ? "bg-white dark:bg-slate-700 text-primary-600 font-bold shadow-2xs"
-                : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-            }`}
-          >
-            HI
-          </button>
-          <button
-            onClick={() => setLanguageMode("both")}
-            className={`px-2 py-1 rounded-lg ${
-              languageMode === "both"
-                ? "bg-white dark:bg-slate-700 text-primary-600 font-bold shadow-2xs"
-                : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-            }`}
-          >
-            Both
-          </button>
+
+          {/* Language Switcher */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-xl text-[11px] font-bold border border-slate-200/60 dark:border-slate-700/60">
+            <button
+              onClick={() => {
+                playTapSound();
+                setLanguageMode("en");
+              }}
+              className={`px-1.5 py-0.5 rounded-lg transition-all ${
+                languageMode === "en"
+                  ? "bg-primary-600 text-white shadow-2xs"
+                  : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
+            >
+              EN
+            </button>
+            <button
+              onClick={() => {
+                playTapSound();
+                setLanguageMode("hi");
+              }}
+              className={`px-1.5 py-0.5 rounded-lg transition-all ${
+                languageMode === "hi"
+                  ? "bg-primary-600 text-white shadow-2xs"
+                  : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
+            >
+              HI
+            </button>
+            <button
+              onClick={() => {
+                playTapSound();
+                setLanguageMode("both");
+              }}
+              className={`px-1.5 py-0.5 rounded-lg transition-all ${
+                languageMode === "both"
+                  ? "bg-primary-600 text-white shadow-2xs"
+                  : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
+            >
+              Both
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* 2. Main Question Card Area */}
-      <div className="flex-1 p-4 overflow-y-auto space-y-4">
+      {/* 2. Main Question & Options Area (Scrollable according to content) */}
+      <div className="flex-1 min-h-0 p-4 overflow-y-auto space-y-3 overscroll-contain">
         {/* Question Metadata Row */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-bold text-primary-700 dark:text-primary-400 bg-primary-50 dark:bg-primary-950/60 border border-primary-200/60 dark:border-primary-800/60 px-3 py-1 rounded-lg">
+            <span className="text-xs font-black tracking-tight text-primary-700 dark:text-primary-300 bg-primary-100/70 dark:bg-primary-950/70 border border-primary-300/70 dark:border-primary-800 px-2.5 py-1 rounded-xl">
               Question {currentIndex + 1}
             </span>
             <span
-              className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${getDifficultyColor(
-                currentQ.difficulty
+              className={`text-[11px] font-extrabold px-2 py-0.5 rounded-xl border ${getDifficultyColor(
+                currentQ.difficulty,
               )}`}
             >
-              {currentQ.difficulty}
+              {currentQ.difficulty || "Medium"} • +100 XP
             </span>
           </div>
 
-          {/* Mark for Review Button */}
+          {/* Mark for Review 3D Button */}
           <button
             onClick={handleToggleFlag}
-            className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${
+            className={`btn-3d flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl font-black cursor-pointer transition-all ${
               currentAns?.isFlagged
-                ? "bg-rose-500 text-white shadow-xs"
-                : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200"
+                ? "btn-3d-rose text-white shadow-xs"
+                : "btn-3d-slate text-slate-700 dark:text-slate-300"
             }`}
           >
-            <Flag className="w-4 h-4 fill-current" />
+            <Flag
+              className={`w-3.5 h-3.5 ${
+                currentAns?.isFlagged ? "fill-current" : ""
+              }`}
+            />
             <span>{currentAns?.isFlagged ? "Marked" : "Review"}</span>
           </button>
         </div>
 
-        {/* Question Text */}
-        <div className="bg-white dark:bg-[#121626] border border-slate-200/80 dark:border-slate-800/80 p-5 rounded-2xl shadow-xs space-y-3">
+        {/* Gamified Question Card (Raised 3D container) */}
+        <div className="game-card p-5 space-y-3.5">
           {(languageMode === "en" || languageMode === "both") && (
-            <p className="text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100 leading-relaxed tracking-normal">
+            <p className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 leading-relaxed tracking-normal">
               {currentQ.question_en}
             </p>
           )}
 
           {languageMode === "both" && currentQ.question_hi && (
-            <hr className="border-slate-100 dark:border-slate-800" />
+            <div className="border-t border-dashed border-slate-200 dark:border-slate-800 my-2" />
           )}
 
           {(languageMode === "hi" || languageMode === "both") &&
@@ -482,99 +554,110 @@ export default function ExamPage({ params }: ExamPageProps) {
             )}
         </div>
 
-        {/* Options Selector */}
+        {/* Tactile 3D Options Selector */}
         <div className="space-y-3">
           {availableOptions.map((optKey) => {
             const isSelected = currentAns?.selectedOption === optKey;
-            const optEn = (currentQ as any)[`option_${optKey.toLowerCase()}_en`];
-            const optHi = (currentQ as any)[`option_${optKey.toLowerCase()}_hi`];
+            const optEn = (currentQ as any)[
+              `option_${optKey.toLowerCase()}_en`
+            ];
+            const optHi = (currentQ as any)[
+              `option_${optKey.toLowerCase()}_hi`
+            ];
 
             return (
               <button
                 key={optKey}
                 onClick={() => handleSelectOption(optKey)}
-                className={`w-full text-left p-4 rounded-2xl border transition-all flex items-start gap-3.5 cursor-pointer ${
+                className={`relative w-full text-left p-3.5 sm:p-4 rounded-2xl border-2 transition-all duration-100 flex items-start gap-3.5 cursor-pointer user-select-none ${
                   isSelected
-                    ? "bg-primary-50 dark:bg-primary-950/60 border-primary-500 dark:border-primary-400 shadow-sm ring-2 ring-primary-500/20"
-                    : "bg-white dark:bg-[#121626] border-slate-200/80 dark:border-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700"
+                    ? "bg-primary-50/90 dark:bg-primary-950/70 border-primary-500 dark:border-primary-400 border-b-4 border-b-primary-700 dark:border-b-primary-600 shadow-md shadow-primary-500/15 ring-2 ring-primary-500/20 active:translate-y-0.5 active:border-b-2"
+                    : "bg-white dark:bg-[#121626] border-slate-200 dark:border-slate-800 border-b-4 border-b-slate-300 dark:border-b-slate-900 hover:border-slate-300 dark:hover:border-slate-700 active:translate-y-0.5 active:border-b-2"
                 }`}
               >
+                {/* 3D Option Key Pill */}
                 <div
-                  className={`w-8 h-8 rounded-xl font-bold text-sm flex items-center justify-center shrink-0 transition-colors ${
+                  className={`w-8 h-8 rounded-xl font-black text-sm flex items-center justify-center shrink-0 transition-all ${
                     isSelected
-                      ? "bg-primary-600 text-white shadow-xs"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                      ? "bg-primary-600 text-white shadow-xs border-b-2 border-primary-800 animate-pop"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300/80 dark:border-slate-700 border-b-2"
                   }`}
                 >
                   {optKey}
                 </div>
 
-                <div className="flex-1 space-y-1.5 min-w-0 pt-0.5">
-                  {(languageMode === "en" || languageMode === "both") && optEn && (
-                    <div
-                      className={`text-sm sm:text-[15px] font-semibold leading-relaxed ${
-                        isSelected
-                          ? "text-primary-950 dark:text-primary-100"
-                          : "text-slate-800 dark:text-slate-200"
-                      }`}
-                    >
-                      {optEn}
-                    </div>
-                  )}
-                  {(languageMode === "hi" || languageMode === "both") && optHi && (
-                    <div
-                      className={`text-sm sm:text-[15px] font-medium leading-relaxed font-sans ${
-                        isSelected
-                          ? "text-primary-900 dark:text-primary-200"
-                          : "text-slate-700 dark:text-slate-300"
-                      }`}
-                    >
-                      {optHi}
-                    </div>
-                  )}
+                <div className="flex-1 space-y-1 min-w-0 pt-0.5">
+                  {(languageMode === "en" || languageMode === "both") &&
+                    optEn && (
+                      <div
+                        className={`text-sm sm:text-[15px] font-bold leading-relaxed ${
+                          isSelected
+                            ? "text-primary-950 dark:text-primary-100"
+                            : "text-slate-800 dark:text-slate-200"
+                        }`}
+                      >
+                        {optEn}
+                      </div>
+                    )}
+                  {(languageMode === "hi" || languageMode === "both") &&
+                    optHi && (
+                      <div
+                        className={`text-sm sm:text-[15px] font-medium leading-relaxed font-sans ${
+                          isSelected
+                            ? "text-primary-900 dark:text-primary-200"
+                            : "text-slate-700 dark:text-slate-300"
+                        }`}
+                      >
+                        {optHi}
+                      </div>
+                    )}
                 </div>
+
+                {isSelected && (
+                  <CheckCircle2 className="w-5 h-5 text-primary-600 dark:text-primary-400 shrink-0 self-center animate-pop ml-auto" />
+                )}
               </button>
             );
           })}
         </div>
 
-        {/* Clear Response Action */}
+        {/* Clear Selection Button */}
         {currentAns?.selectedOption && (
           <div className="text-right pt-1">
             <button
               onClick={handleClearResponse}
-              className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 hover:text-rose-500 font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+              className="text-xs text-slate-500 dark:text-slate-400 hover:text-rose-500 font-extrabold inline-flex items-center gap-1.5 cursor-pointer bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Clear selection</span>
+              <RotateCcw className="w-3 h-3" />
+              <span>Clear Choice</span>
             </button>
           </div>
         )}
       </div>
 
-      {/* 3. Bottom Action Bar */}
-      <div className="sticky bottom-0 z-30 bg-white/95 dark:bg-[#0e1222]/95 backdrop-blur-md border-t border-slate-200/80 dark:border-slate-800/80 p-3.5 safe-bottom">
+      {/* 3. Fixed Bottom Action Dock */}
+      <div className="shrink-0 z-30 bg-white/95 dark:bg-[#0e1222]/95 backdrop-blur-md border-t border-slate-200/80 dark:border-slate-800/80 p-3.5 safe-bottom shadow-lg">
         <div className="flex items-center justify-between gap-2.5">
-          {/* Previous Question */}
+          {/* Previous Question (3D Slate Button) */}
           <button
             onClick={() => handleNavigate(currentIndex - 1)}
             disabled={currentIndex === 0}
-            className="flex-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            className="btn-3d btn-3d-slate flex-1 py-3 rounded-2xl text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
           >
             <ChevronLeft className="w-4 h-4" />
             <span>Prev</span>
           </button>
 
-          {/* Submit Test Trigger */}
+          {/* Submit Test Trigger (3D Emerald Button) */}
           <button
             onClick={openSubmitModal}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-transform cursor-pointer"
+            className="btn-3d btn-3d-emerald px-5 py-3 rounded-2xl text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer"
           >
             <Send className="w-4 h-4" />
             <span>Submit</span>
           </button>
 
-          {/* Next Question */}
+          {/* Next Question / Finish (3D Primary Button) */}
           <button
             onClick={() => {
               if (currentIndex < questions.length - 1) {
@@ -583,7 +666,7 @@ export default function ExamPage({ params }: ExamPageProps) {
                 openSubmitModal();
               }
             }}
-            className="flex-1 bg-primary-600 hover:bg-primary-700 text-white py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-transform cursor-pointer"
+            className="btn-3d btn-3d-primary flex-1 py-3 rounded-2xl text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 shadow-md shadow-primary-600/20 cursor-pointer"
           >
             <span>
               {currentIndex < questions.length - 1 ? "Next" : "Finish"}
@@ -593,66 +676,77 @@ export default function ExamPage({ params }: ExamPageProps) {
         </div>
       </div>
 
-      {/* 4. Question Palette Slide-up Drawer */}
+      {/* 4. Gamified Question Map Slide-up Drawer */}
       {isPaletteOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex flex-col justify-end">
-          <div className="bg-white dark:bg-[#101424] rounded-t-3xl p-5 max-h-[80vh] flex flex-col space-y-4 shadow-2xl">
+          <div className="bg-white dark:bg-[#101424] rounded-t-3xl p-5 max-h-[82vh] flex flex-col space-y-4 shadow-2xl border-t-2 border-slate-200 dark:border-slate-800">
+            {/* Drawer Handle */}
+            <div className="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700 mx-auto -mt-1" />
+
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Question Palette
+                <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Layers className="w-4 h-4 text-primary-500" />
+                  <span>Question Map 🗺️</span>
                 </h3>
-                <p className="text-xs text-slate-500">
-                  Quick jump to any question
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Tap any node to jump instantly
                 </p>
               </div>
               <button
-                onClick={() => setIsPaletteOpen(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 cursor-pointer"
+                onClick={() => {
+                  playTapSound();
+                  setIsPaletteOpen(false);
+                }}
+                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Summary Legend */}
+            {/* Gamified Summary Legend */}
             <div className="grid grid-cols-3 gap-2 text-center text-xs">
-              <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 p-2.5 rounded-xl text-emerald-700 dark:text-emerald-400 font-bold">
-                {answeredCount} Answered
+              <div className="bg-emerald-50 dark:bg-emerald-950/60 border-2 border-emerald-400/80 border-b-4 border-b-emerald-600 text-emerald-800 dark:text-emerald-300 font-black p-2 rounded-2xl flex items-center justify-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>{answeredCount} Solved</span>
               </div>
-              <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 p-2.5 rounded-xl text-rose-700 dark:text-rose-400 font-bold">
-                {flaggedCount} Marked
+              <div className="bg-rose-50 dark:bg-rose-950/60 border-2 border-rose-400/80 border-b-4 border-b-rose-600 text-rose-800 dark:text-rose-300 font-black p-2 rounded-2xl flex items-center justify-center gap-1">
+                <Flag className="w-3.5 h-3.5 fill-current" />
+                <span>{flaggedCount} Marked</span>
               </div>
-              <div className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-xl text-slate-600 dark:text-slate-400 font-bold">
-                {unansweredCount} Left
+              <div className="bg-slate-100 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-700 border-b-4 border-b-slate-400 dark:border-b-slate-900 text-slate-700 dark:text-slate-300 font-black p-2 rounded-2xl flex items-center justify-center gap-1">
+                <Clock className="w-3.5 h-3.5" />
+                <span>{unansweredCount} Left</span>
               </div>
             </div>
 
-            {/* Palette Grid */}
-            <div className="flex-1 overflow-y-auto max-h-72 grid grid-cols-5 gap-2.5 pr-1">
+            {/* Stepping Stone Question Grid */}
+            <div className="flex-1 overflow-y-auto max-h-72 grid grid-cols-5 gap-2.5 pr-1 py-1">
               {questions.map((q, idx) => {
                 const ans = userAnswers[q.id];
                 const isCurrent = idx === currentIndex;
                 const isAnswered = ans?.selectedOption !== null;
                 const isFlagged = ans?.isFlagged;
 
-                let cellBg =
-                  "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300";
+                let cellStyle =
+                  "btn-3d btn-3d-slate text-slate-700 dark:text-slate-300";
                 if (isCurrent) {
-                  cellBg =
-                    "border-2 border-primary-600 text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950 font-bold";
+                  cellStyle =
+                    "btn-3d btn-3d-primary font-black ring-4 ring-primary-500/30 scale-105 z-10";
                 } else if (isFlagged && isAnswered) {
-                  cellBg = "bg-purple-600 text-white font-bold";
+                  cellStyle =
+                    "btn-3d bg-purple-600 text-white border-b-4 border-b-purple-800 font-black shadow-sm";
                 } else if (isFlagged) {
-                  cellBg = "bg-rose-500 text-white font-bold";
+                  cellStyle = "btn-3d btn-3d-rose text-white font-black";
                 } else if (isAnswered) {
-                  cellBg = "bg-emerald-500 text-white font-bold";
+                  cellStyle = "btn-3d btn-3d-emerald text-white font-black";
                 }
 
                 return (
                   <button
                     key={q.id}
                     onClick={() => handleNavigate(idx)}
-                    className={`h-12 rounded-xl text-sm font-bold flex items-center justify-center transition-all cursor-pointer ${cellBg}`}
+                    className={`h-11 rounded-2xl text-xs sm:text-sm font-black flex items-center justify-center transition-all cursor-pointer ${cellStyle}`}
                   >
                     {idx + 1}
                   </button>
@@ -663,34 +757,39 @@ export default function ExamPage({ params }: ExamPageProps) {
         </div>
       )}
 
-      {/* 5. Submit Confirmation Modal */}
+      {/* 5. Gamified Submit Confirmation Modal */}
       {showSubmitModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#121626] rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
-              <CheckCircle2 className="w-6 h-6" />
+          <div className="game-card bg-white dark:bg-[#121626] rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border-2 border-slate-200 dark:border-slate-800 text-center animate-pop">
+            <div className="w-14 h-14 rounded-3xl bg-emerald-100 dark:bg-emerald-950/70 border-2 border-emerald-400 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-md">
+              <Trophy className="w-7 h-7" />
             </div>
 
-            <div className="text-center">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Submit Test Attempt?
+            <div>
+              <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                Submit Test Attempt? 🏁
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Once submitted, your answers will be evaluated against official answer keys.
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                Your answers will be evaluated with official CCC grading and XP
+                points will be added to your profile!
               </p>
             </div>
 
             {/* Quick Stats Summary */}
-            <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 rounded-2xl p-3 grid grid-cols-2 gap-2 text-center text-xs">
-              <div>
-                <span className="text-slate-400">Attempted:</span>
-                <p className="font-bold text-slate-800 dark:text-slate-200">
+            <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 grid grid-cols-2 gap-2 text-center text-xs">
+              <div className="bg-white dark:bg-slate-800/80 p-2 rounded-xl">
+                <span className="text-slate-400 text-[10px] block">
+                  Attempted
+                </span>
+                <p className="font-black text-emerald-600 dark:text-emerald-400 text-sm">
                   {answeredCount}/{questions.length}
                 </p>
               </div>
-              <div>
-                <span className="text-slate-400">Unanswered:</span>
-                <p className="font-bold text-amber-600">
+              <div className="bg-white dark:bg-slate-800/80 p-2 rounded-xl">
+                <span className="text-slate-400 text-[10px] block">
+                  Unanswered
+                </span>
+                <p className="font-black text-amber-600 dark:text-amber-400 text-sm">
                   {unansweredCount} Qs
                 </p>
               </div>
@@ -698,16 +797,19 @@ export default function ExamPage({ params }: ExamPageProps) {
 
             <div className="flex items-center gap-2 pt-2">
               <button
-                onClick={() => setShowSubmitModal(false)}
+                onClick={() => {
+                  playTapSound();
+                  setShowSubmitModal(false);
+                }}
                 disabled={isSubmitting}
-                className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold disabled:opacity-50"
+                className="btn-3d btn-3d-slate flex-1 py-3 rounded-2xl text-xs font-black disabled:opacity-50 cursor-pointer"
               >
                 Continue Test
               </button>
               <button
                 onClick={handleFinalSubmit}
                 disabled={isSubmitting}
-                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-60"
+                className="btn-3d btn-3d-emerald flex-1 py-3 rounded-2xl text-xs font-black flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 disabled:opacity-60 cursor-pointer"
               >
                 {isSubmitting ? (
                   <>
@@ -723,41 +825,45 @@ export default function ExamPage({ params }: ExamPageProps) {
         </div>
       )}
 
-      {/* 6. Exit Confirmation Modal */}
+      {/* 6. Gamified Exit Confirmation Modal */}
       {showExitModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#121626] rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center mx-auto">
-              <AlertTriangle className="w-6 h-6" />
+          <div className="game-card bg-white dark:bg-[#121626] rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border-2 border-slate-200 dark:border-slate-800 text-center animate-pop">
+            <div className="w-14 h-14 rounded-3xl bg-amber-100 dark:bg-amber-950/70 border-2 border-amber-400 text-amber-600 flex items-center justify-center mx-auto shadow-md">
+              <AlertTriangle className="w-7 h-7" />
             </div>
 
             <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              <h3 className="text-lg font-black text-slate-900 dark:text-white">
                 Leave Active Test?
               </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Your answers up to this point are saved on the server. You can submit now or abandon.
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                Your answers are saved on the server. You can submit now to get
+                graded or resume test.
               </p>
             </div>
 
-            <div className="flex flex-col gap-2 pt-2">
+            <div className="flex flex-col gap-2.5 pt-2">
               <button
-                onClick={() => setShowExitModal(false)}
-                className="w-full py-2.5 rounded-xl bg-primary-600 text-white text-xs font-bold"
+                onClick={() => {
+                  playTapSound();
+                  setShowExitModal(false);
+                }}
+                className="btn-3d btn-3d-primary w-full py-3 rounded-2xl text-xs font-black cursor-pointer"
               >
                 Resume Test
               </button>
               <button
                 onClick={handleFinalSubmit}
-                className="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold"
+                className="btn-3d btn-3d-emerald w-full py-3 rounded-2xl text-xs font-black cursor-pointer"
               >
                 Submit Current Answers
               </button>
               <button
                 onClick={() => router.push("/")}
-                className="w-full py-2 rounded-xl text-slate-500 text-xs font-semibold hover:text-slate-800"
+                className="w-full py-2 rounded-xl text-slate-500 text-xs font-bold hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
               >
-                Exit without Submitting
+                Exit to Dashboard
               </button>
             </div>
           </div>

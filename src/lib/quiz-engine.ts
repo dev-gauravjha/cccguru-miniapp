@@ -118,7 +118,10 @@ export async function getRawQuestionsForQuizItem(
 /**
  * Returns available quiz items filtered by type = 'quiz' from test_series_items in Supabase
  */
-export async function getQuizCatalog(studentId?: string) {
+export async function getQuizCatalog(
+  studentId?: string,
+  canonicalUserId?: string
+) {
   const supabase = getSupabaseAdminClient();
 
   // Query ONLY test_series_items where test_type is quiz
@@ -151,7 +154,7 @@ export async function getQuizCatalog(studentId?: string) {
     })
   );
 
-  // Calculate student's quiz history if studentId provided
+  // Calculate student's quiz history if studentId or canonicalUserId provided
   let userStats = {
     quizzesCompleted: 0,
     totalQuestionsSolved: 0,
@@ -160,40 +163,83 @@ export async function getQuizCatalog(studentId?: string) {
     totalPoints: 0,
   };
 
-  if (studentId) {
-    try {
-      const { data: attempts } = await supabase
-        .from("student_test_attempts")
-        .select("score, total_marks, correct_count, attempted_count, accuracy, status")
-        .eq("student_id", studentId)
-        .eq("status", "evaluated");
+  const targetStudentId = studentId || "preview_student_demo";
+  const targetCanonicalId =
+    canonicalUserId ||
+    (targetStudentId === "preview_student_demo"
+      ? "00000000-0000-0000-0000-000000000001"
+      : undefined);
 
-      if (attempts && attempts.length > 0) {
-        const total = attempts.length;
-        const totalAccuracy = attempts.reduce(
-          (acc, a) => acc + (Number(a.accuracy) || 0),
-          0
-        );
-        const totalScore = attempts.reduce(
-          (acc, a) => acc + (Number(a.score) || 0),
-          0
-        );
-        const totalSolved = attempts.reduce(
-          (acc, a) => acc + (Number(a.attempted_count) || 0),
-          0
-        );
+  try {
+    let query = supabase
+      .from("student_test_attempts")
+      .select("score, total_marks, correct_count, attempted_count, accuracy, status")
+      .eq("status", "evaluated");
 
+    if (targetStudentId && targetCanonicalId) {
+      query = query.or(`student_id.eq.${targetStudentId},canonical_user_id.eq.${targetCanonicalId}`);
+    } else if (targetStudentId) {
+      query = query.eq("student_id", targetStudentId);
+    } else if (targetCanonicalId) {
+      query = query.eq("canonical_user_id", targetCanonicalId);
+    }
+
+    const { data: attempts, error: attErr } = await query;
+    if (attErr) {
+      console.error("[QuizEngine] Error querying attempts:", attErr.message);
+    }
+
+    if (attempts && attempts.length > 0) {
+      const total = attempts.length;
+      const totalAccuracy = attempts.reduce(
+        (acc, a) => acc + (Number(a.accuracy) || 0),
+        0
+      );
+      const totalScore = attempts.reduce(
+        (acc, a) => acc + (Number(a.score) || 0),
+        0
+      );
+      const totalSolved = attempts.reduce(
+        (acc, a) => acc + (Number(a.attempted_count) || 0),
+        0
+      );
+      const maxCorrect = attempts.reduce((max, a) => {
+        const correct = Number(a.correct_count) || 0;
+        return Math.max(max, correct);
+      }, 0);
+
+      userStats = {
+        quizzesCompleted: total,
+        totalQuestionsSolved: totalSolved,
+        avgAccuracy: Math.round(totalAccuracy / total),
+        bestStreak: Math.min(
+          15,
+          Math.max(1, maxCorrect > 15 ? 10 : maxCorrect)
+        ),
+        totalPoints: Math.round(totalScore),
+      };
+    } else if (targetCanonicalId) {
+      // Check leaderboard point events for this student if attempts query returned 0
+      const { data: events } = await supabase
+        .from("leaderboard_point_events")
+        .select("points_awarded, correct_count, total_questions")
+        .eq("canonical_user_id", targetCanonicalId);
+
+      if (events && events.length > 0) {
+        const totalPts = events.reduce((s, e) => s + (Number(e.points_awarded) || 0), 0);
+        const totalSolved = events.reduce((s, e) => s + (Number(e.total_questions) || 0), 0);
+        const totalCorrect = events.reduce((s, e) => s + (Number(e.correct_count) || 0), 0);
         userStats = {
-          quizzesCompleted: total,
+          quizzesCompleted: events.length,
           totalQuestionsSolved: totalSolved,
-          avgAccuracy: Math.round(totalAccuracy / total),
-          bestStreak: Math.max(0, Math.min(10, Math.round(total * 1.5))),
-          totalPoints: Math.round(totalScore),
+          avgAccuracy: totalSolved > 0 ? Math.round((totalCorrect / totalSolved) * 100) : 0,
+          bestStreak: Math.max(...events.map((e) => e.correct_count || 0), 1),
+          totalPoints: totalPts,
         };
       }
-    } catch {
-      // Graceful fallback
     }
+  } catch (err) {
+    console.error("[QuizEngine] Error computing userStats:", err);
   }
 
   return {
@@ -549,10 +595,11 @@ export async function completeQuizSession(params: {
 
   // 1. Update attempt status to 'evaluated' in Supabase
   try {
-    await (supabase as any).from("student_test_attempts").upsert({
+    const { error: upsertErr } = await (supabase as any).from("student_test_attempts").upsert({
       id: params.attemptId,
       student_id: studentId,
       canonical_user_id: canonicalUserId,
+      test_item_id: testItemId,
       status: "evaluated",
       submitted_at: submittedAt,
       time_taken_seconds: timeTakenSeconds,
@@ -565,6 +612,10 @@ export async function completeQuizSession(params: {
       accuracy,
       updated_at: submittedAt,
     });
+
+    if (upsertErr) {
+      console.error("[QuizEngine] Error updating student_test_attempts:", upsertErr);
+    }
 
     // 2. Award Leaderboard Points ONLY IF passing (score >= 50%)
     if (canonicalUserId && pointsToAward > 0 && testItemId) {

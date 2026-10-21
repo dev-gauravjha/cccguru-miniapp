@@ -3,9 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import {
-  Flame,
   Zap,
-  Trophy,
   Target,
   Clock,
   Play,
@@ -42,16 +40,26 @@ interface QuizCatalogData {
 }
 
 export default function QuizHomePage() {
-  const { triggerHaptic } = useTelegram();
+  const { triggerHaptic, user, session } = useTelegram();
   const [data, setData] = useState<QuizCatalogData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const studentId = session?.studentId || (user?.id ? `tg_${user.id}` : "");
+  const canonicalUserId = session?.canonicalUserId || "";
 
   const fetchCatalog = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/quiz/catalog");
+      const params = new URLSearchParams();
+      if (studentId) params.set("studentId", studentId);
+      if (canonicalUserId) params.set("canonicalUserId", canonicalUserId);
+      const url = params.toString()
+        ? `/api/quiz/catalog?${params.toString()}`
+        : "/api/quiz/catalog";
+
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to load quiz catalog.");
       const json = await res.json();
       setData(json);
@@ -60,7 +68,7 @@ export default function QuizHomePage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [studentId, canonicalUserId]);
 
   useEffect(() => {
     fetchCatalog();
@@ -84,24 +92,13 @@ export default function QuizHomePage() {
         {/* Top Hero Banner: Featured Sprint from Supabase */}
         <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 via-teal-600 to-indigo-700 text-white p-5 shadow-xl shadow-emerald-700/20">
           <div className="relative z-10 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-emerald-100">
-                <Zap className="w-3.5 h-3.5 fill-amber-300 text-amber-300" />
-                <span>Instant Feedback Sprint</span>
-              </span>
-              <div className="flex items-center gap-1 bg-black/25 px-2.5 py-1 rounded-full text-xs font-black text-amber-300">
-                <Flame className="w-3.5 h-3.5 fill-current text-orange-400" />
-                <span>Streak {stats.bestStreak}</span>
-              </div>
-            </div>
-
             <div>
               <h2 className="text-xl font-black">
                 {featuredQuiz ? featuredQuiz.title : "CCC Interactive Quiz ⚡"}
               </h2>
               <p className="text-xs text-emerald-100 mt-1 leading-relaxed">
                 {featuredQuiz
-                  ? `${featuredQuiz.seriesTitle} • ${featuredQuiz.questionCount} live questions from database. Instant locking & streak bonuses!`
+                  ? `${featuredQuiz.seriesTitle} • ${featuredQuiz.questionCount} live questions from database with instant answer keys!`
                   : "Database-driven interactive quiz sprint with instant feedback."}
               </p>
             </div>
@@ -123,42 +120,36 @@ export default function QuizHomePage() {
           </div>
         </section>
 
-        {/* Player Stats Grid */}
-        <section className="grid grid-cols-4 gap-2">
-          {/* Quizzes */}
-          <div className="bg-white dark:bg-[#121626] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-2.5 text-center shadow-xs">
-            <Award className="w-4 h-4 text-primary-500 mx-auto mb-1" />
-            <span className="text-xs font-black text-slate-900 dark:text-white block">
-              {stats.quizzesCompleted}
-            </span>
-            <span className="text-[9px] text-slate-400 font-bold uppercase">Quizzes</span>
+        {/* Player Stats Grid (Quizzes Solved & Accuracy) */}
+        <section className="grid grid-cols-2 gap-3">
+          {/* Quizzes Completed */}
+          <div className="bg-white dark:bg-[#121626] border-2 border-slate-200/80 dark:border-slate-800 border-b-4 rounded-2xl p-3 text-center shadow-xs flex items-center justify-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary-100 dark:bg-primary-950/60 text-primary-600 dark:text-primary-400 flex items-center justify-center shrink-0 border border-primary-200 dark:border-primary-800">
+              <Award className="w-5 h-5" />
+            </div>
+            <div className="text-left">
+              <span className="text-sm font-black text-slate-900 dark:text-white block leading-tight">
+                {stats.quizzesCompleted}
+              </span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase">
+                Quizzes Solved
+              </span>
+            </div>
           </div>
 
-          {/* Accuracy */}
-          <div className="bg-white dark:bg-[#121626] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-2.5 text-center shadow-xs">
-            <Target className="w-4 h-4 text-emerald-500 mx-auto mb-1" />
-            <span className="text-xs font-black text-slate-900 dark:text-white block">
-              {stats.avgAccuracy}%
-            </span>
-            <span className="text-[9px] text-slate-400 font-bold uppercase">Accuracy</span>
-          </div>
-
-          {/* Best Streak */}
-          <div className="bg-white dark:bg-[#121626] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-2.5 text-center shadow-xs">
-            <Flame className="w-4 h-4 text-orange-500 mx-auto mb-1" />
-            <span className="text-xs font-black text-slate-900 dark:text-white block">
-              {stats.bestStreak}🔥
-            </span>
-            <span className="text-[9px] text-slate-400 font-bold uppercase">Streak</span>
-          </div>
-
-          {/* Points */}
-          <div className="bg-white dark:bg-[#121626] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-2.5 text-center shadow-xs">
-            <Trophy className="w-4 h-4 text-amber-500 mx-auto mb-1" />
-            <span className="text-xs font-black text-slate-900 dark:text-white block">
-              {stats.totalPoints}
-            </span>
-            <span className="text-[9px] text-slate-400 font-bold uppercase">Points</span>
+          {/* Average Accuracy */}
+          <div className="bg-white dark:bg-[#121626] border-2 border-slate-200/80 dark:border-slate-800 border-b-4 rounded-2xl p-3 text-center shadow-xs flex items-center justify-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-200 dark:border-emerald-800">
+              <Target className="w-5 h-5" />
+            </div>
+            <div className="text-left">
+              <span className="text-sm font-black text-slate-900 dark:text-white block leading-tight">
+                {stats.avgAccuracy}%
+              </span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase">
+                Avg. Accuracy
+              </span>
+            </div>
           </div>
         </section>
 
@@ -168,7 +159,7 @@ export default function QuizHomePage() {
             <div className="flex items-center gap-2">
               <Zap className="w-4 h-4 text-primary-600" />
               <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">
-                Available Interactive Quizzes
+                Available Quizzes
               </h3>
             </div>
             <span className="text-[11px] font-bold text-slate-400">

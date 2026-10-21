@@ -124,4 +124,12 @@ export const CHAPTER_TEST_ITEMS_MAP: Record<
     questionCount: 100,
     duration: 90,
   },
+  10: {
+    id: "aa8fb338-e9b0-4433-8d03-3c2de5bba552",
+    slug: "future-skills-artificial-intelligence",
+    title: "Future Skills & Artificial Intelligence",
+    questionCount: 100,
+    duration: 90,
+  },
 };
+

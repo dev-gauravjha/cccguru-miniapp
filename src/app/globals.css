@@ -132,3 +132,125 @@ body {
   margin-top: 3px;
 }
 
+/* Duolingo-Style 3D Button Presets */
+.btn-3d-primary {
+  background-color: #7c3aed;
+  color: #ffffff;
+  border-bottom: 4px solid #5b21b6;
+  box-shadow: 0 4px 6px -1px rgba(124, 58, 237, 0.25);
+}
+.btn-3d-primary:hover:not(:disabled) {
+  background-color: #6d28d9;
+}
+.btn-3d-primary:active:not(:disabled) {
+  border-bottom-width: 0 !important;
+  box-shadow: 0 1px 2px rgba(124, 58, 237, 0.2);
+}
+
+.btn-3d-emerald {
+  background-color: #10b981;
+  color: #ffffff;
+  border-bottom: 4px solid #047857;
+  box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.25);
+}
+.btn-3d-emerald:hover:not(:disabled) {
+  background-color: #059669;
+}
+.btn-3d-emerald:active:not(:disabled) {
+  border-bottom-width: 0 !important;
+  box-shadow: 0 1px 2px rgba(16, 185, 129, 0.2);
+}
+
+.btn-3d-amber {
+  background-color: #f59e0b;
+  color: #0f172a;
+  border-bottom: 4px solid #b45309;
+  box-shadow: 0 4px 6px -1px rgba(245, 158, 11, 0.25);
+}
+.btn-3d-amber:hover:not(:disabled) {
+  background-color: #d97706;
+  color: #ffffff;
+}
+.btn-3d-amber:active:not(:disabled) {
+  border-bottom-width: 0 !important;
+  box-shadow: 0 1px 2px rgba(245, 158, 11, 0.2);
+}
+
+.btn-3d-rose {
+  background-color: #f43f5e;
+  color: #ffffff;
+  border-bottom: 4px solid #be123c;
+  box-shadow: 0 4px 6px -1px rgba(244, 63, 94, 0.25);
+}
+.btn-3d-rose:hover:not(:disabled) {
+  background-color: #e11d48;
+}
+.btn-3d-rose:active:not(:disabled) {
+  border-bottom-width: 0 !important;
+  box-shadow: 0 1px 2px rgba(244, 63, 94, 0.2);
+}
+
+.btn-3d-slate {
+  background-color: #f1f5f9;
+  color: #1e293b;
+  border-bottom: 4px solid #cbd5e1;
+}
+.dark .btn-3d-slate {
+  background-color: #1e293b;
+  color: #f1f5f9;
+  border-bottom: 4px solid #0f172a;
+}
+.btn-3d-slate:hover:not(:disabled) {
+  background-color: #e2e8f0;
+}
+.dark .btn-3d-slate:hover:not(:disabled) {
+  background-color: #334155;
+}
+.btn-3d-slate:active:not(:disabled) {
+  border-bottom-width: 0 !important;
+}
+
+/* Raised Tactile Game Card */
+.game-card {
+  background: var(--color-surface-card);
+  border: 2px solid var(--color-border-card);
+  border-bottom-width: 5px;
+  border-radius: 1.25rem;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.game-card:hover {
+  border-color: #a864f6;
+  transform: translateY(-2px);
+}
+.game-card:active {
+  transform: translateY(1px);
+}
+
+/* Shimmer Sheen Effect */
+@keyframes sheen {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+.animate-sheen {
+  animation: sheen 2.5s infinite;
+}
+
+/* Subtle Game Floating */
+@keyframes subtleFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+.animate-float {
+  animation: subtleFloat 3s ease-in-out infinite;
+}
+
+/* Crown Pulse */
+@keyframes crownGlow {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.6)); }
+  50% { filter: drop-shadow(0 0 12px rgba(245, 158, 11, 0.95)); }
+}
+.animate-crown {
+  animation: crownGlow 2s infinite ease-in-out;
+}
+
+

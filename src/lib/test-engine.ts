@@ -125,16 +125,47 @@ export async function getTestSeriesItemById(
     .select("*, test_series(id, title, slug, is_paid, price, category_id)")
     .eq("is_published", true);
 
-  if (!allItems) return null;
+  if (allItems) {
+    const match = allItems.find(
+      (item: any) =>
+        item.id === id ||
+        item.title.toLowerCase().replace(/[^a-z0-9]+/g, "-") ===
+          id.toLowerCase().trim()
+    );
+    if (match) return match as TestSeriesItem;
+  }
 
-  const match = allItems.find(
-    (item: any) =>
-      item.id === id ||
-      item.title.toLowerCase().replace(/[^a-z0-9]+/g, "-") ===
-        id.toLowerCase().trim()
-  );
+  // Fallback: Check if id is a chapter ID in `chapters` table
+  if (isUuid) {
+    const { data: chap } = await supabase
+      .from("chapters")
+      .select("id, title, sort_order")
+      .eq("id", id)
+      .maybeSingle();
 
-  return match ?? null;
+    if (chap) {
+      // Find matching test item in chapterwise series
+      const { data: seriesItems } = await supabase
+        .from("test_series_items")
+        .select("*, test_series(id, title, slug, is_paid, price, category_id)")
+        .eq("series_id", "2db0e35e-83a5-4323-800a-c860c59bdbc5")
+        .eq("is_published", true);
+
+      if (seriesItems && seriesItems.length > 0) {
+        const meta = CHAPTER_TEST_ITEMS_MAP[(chap as any).sort_order];
+        const match =
+          (meta && seriesItems.find((s) => s.id === meta.id)) ||
+          seriesItems.find(
+            (s) =>
+              s.title.toLowerCase().includes((chap as any).title.toLowerCase()) ||
+              (chap as any).title.toLowerCase().includes(s.title.toLowerCase())
+          );
+        if (match) return match as TestSeriesItem;
+      }
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -188,7 +219,19 @@ export async function getRawQuestionsForTest(
       .filter((q: any) => q && q.is_active) as Question[];
   }
 
-  // 3. Fallback: Check if testItemId is a chapter test and query by chapter_id
+  // 3. Fallback: Check if testItemId is directly a chapter_id in questions
+  const { data: directChapQuestions } = await supabase
+    .from("questions")
+    .select("*")
+    .eq("chapter_id", testItemId)
+    .eq("is_active", true)
+    .limit(100);
+
+  if (directChapQuestions && directChapQuestions.length > 0) {
+    return directChapQuestions as Question[];
+  }
+
+  // 4. Fallback: Check if testItemId is mapped in CHAPTER_TEST_ITEMS_MAP
   for (const [sortOrder, meta] of Object.entries(CHAPTER_TEST_ITEMS_MAP)) {
     if (meta.id === testItemId) {
       const { data: chapter } = await supabase
@@ -567,6 +610,7 @@ export async function submitTestAttempt(params: {
       id: params.attemptId,
       student_id: params.studentId,
       canonical_user_id: params.canonicalUserId || null,
+      test_item_id: item.id,
       status: "evaluated",
       submitted_at: submittedAt,
       time_taken_seconds: timeTakenSeconds,

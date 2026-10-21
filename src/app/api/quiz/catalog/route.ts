@@ -11,8 +11,19 @@ export async function GET(req: NextRequest) {
       session = createPreviewSession();
     }
 
-    const studentId = session?.studentId;
-    const catalog = await getQuizCatalog(studentId);
+    const { searchParams } = new URL(req.url);
+    const queryStudentId = searchParams.get("studentId");
+    const queryCanonicalId = searchParams.get("canonicalUserId");
+
+    const studentId = queryStudentId || session?.studentId || "preview_student_demo";
+    const canonicalUserId =
+      queryCanonicalId ||
+      session?.canonicalUserId ||
+      (studentId === "preview_student_demo"
+        ? "00000000-0000-0000-0000-000000000001"
+        : undefined);
+
+    const catalog = await getQuizCatalog(studentId, canonicalUserId);
 
     return NextResponse.json({
       success: true,
