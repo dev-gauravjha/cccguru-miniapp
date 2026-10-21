@@ -73,3 +73,62 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Duolingo-style Animations & Tactile 3D Buttons */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+
+@keyframes pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+
+@keyframes flamePulse {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 2px rgba(249, 115, 22, 0.4)); }
+  50% { transform: scale(1.15); filter: drop-shadow(0 0 8px rgba(249, 115, 22, 0.8)); }
+}
+
+@keyframes floatParticle {
+  0% { transform: translateY(0) scale(0.8); opacity: 1; }
+  100% { transform: translateY(-40px) scale(1.2); opacity: 0; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-shake {
+  animation: shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+.animate-pop {
+  animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+
+.animate-flame {
+  animation: flamePulse 1.8s infinite ease-in-out;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Tactile 3D Button (Duolingo Style) */
+.btn-3d {
+  position: relative;
+  transition: all 0.1s ease-out;
+  cursor: pointer;
+  user-select: none;
+}
+
+.btn-3d:active:not(:disabled) {
+  transform: translateY(3px);
+  border-bottom-width: 0px !important;
+  margin-top: 3px;
+}
+

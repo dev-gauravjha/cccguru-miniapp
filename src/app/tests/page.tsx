@@ -240,15 +240,27 @@ export default function TestsPage() {
                     </span>
                   </div>
 
-                  <Link
-                    href={`/exam/${item.id}`}
-                    onClick={() => triggerHaptic("medium")}
-                    className="bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs px-4 py-1.5 rounded-xl shadow-xs transition-transform active:scale-95 flex items-center gap-1.5"
-                  >
-                    <Play className="w-3 h-3 fill-current" />
-                    <span>Start Test</span>
-                  </Link>
+                  {Boolean((item.test_type || item.type || "").toLowerCase().includes("quiz")) ? (
+                    <Link
+                      href={`/quiz/${item.id}`}
+                      onClick={() => triggerHaptic("selection")}
+                      className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs px-4 py-1.5 rounded-xl shadow-xs transition-transform active:scale-95 flex items-center gap-1.5"
+                    >
+                      <Sparkles className="w-3 h-3 fill-current" />
+                      <span>Start Quiz</span>
+                    </Link>
+                  ) : (
+                    <Link
+                      href={`/exam/${item.id}`}
+                      onClick={() => triggerHaptic("medium")}
+                      className="bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs px-4 py-1.5 rounded-xl shadow-xs transition-transform active:scale-95 flex items-center gap-1.5"
+                    >
+                      <Play className="w-3 h-3 fill-current" />
+                      <span>Start Test</span>
+                    </Link>
+                  )}
                 </div>
+
               </div>
             ))}
           </div>

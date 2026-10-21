@@ -18,8 +18,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const canonicalUserId =
+      session?.canonicalUserId ||
+      (studentId === "preview_student_demo"
+        ? "00000000-0000-0000-0000-000000000001"
+        : undefined);
+
     const result = await startTestAttempt({
       studentId,
+      canonicalUserId,
       studentName,
       studentUsername: session?.username,
       studentType: session?.studentType || "telegram",

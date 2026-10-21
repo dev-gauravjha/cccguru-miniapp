@@ -33,6 +33,7 @@ export interface TelegramInitDataParsed {
 
 export interface StudentSession {
   studentId: string;
+  canonicalUserId?: string;
   studentType: "telegram" | "preview";
   telegramUser?: TelegramUser;
   name: string;
@@ -41,6 +42,8 @@ export interface StudentSession {
   authDate: number;
   expiresAt: number;
   isDevPreview?: boolean;
+  isLinked?: boolean;
+  authUserId?: string;
 }
 
 // Telegram WebApp window object interface

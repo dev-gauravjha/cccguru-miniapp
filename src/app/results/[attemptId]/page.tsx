@@ -18,6 +18,7 @@ import {
   AlertCircle,
   ChevronDown,
   Sparkles,
+  Trophy,
 } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { useTelegram } from "@/components/providers/TelegramProvider";
@@ -212,6 +213,55 @@ export default function ResultDetailPage({ params }: ResultDetailPageProps) {
               </span>
             </div>
           </div>
+
+          {/* Leaderboard Points Earned Banner (Enforces CCC rule: Score >= 50% to qualify) */}
+          {isPassed ? (
+            <div className="bg-gradient-to-r from-amber-500/15 via-emerald-500/10 to-teal-500/15 border border-amber-300 dark:border-amber-700/60 p-3.5 rounded-2xl flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold shadow-xs">
+                  <Sparkles className="w-4 h-4 fill-current" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold text-slate-900 dark:text-white">
+                    +{attempt.correct_count} Leaderboard Points Earned!
+                  </p>
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                    Passed ({percentage}%) • Ranked on Live Scoreboard
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/leaderboard"
+                onClick={() => triggerHaptic("medium")}
+                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-xs active:scale-95 transition-all"
+              >
+                Leaderboard
+              </Link>
+            </div>
+          ) : (
+            <div className="bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 p-3.5 rounded-2xl flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-slate-300 dark:bg-slate-700 text-slate-600 dark:text-slate-400 flex items-center justify-center font-bold">
+                  <Trophy className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                    0 Points for Leaderboard
+                  </p>
+                  <p className="text-[10px] text-rose-500 dark:text-rose-400 font-semibold">
+                    Score ≥ 50% required to enter leaderboard (You got {percentage}%)
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/leaderboard"
+                onClick={() => triggerHaptic("selection")}
+                className="px-3 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold active:scale-95 transition-all"
+              >
+                View Ranks
+              </Link>
+            </div>
+          )}
 
           <div className="flex items-center gap-2 pt-2">
             <Link

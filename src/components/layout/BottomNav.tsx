@@ -2,23 +2,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, BookOpen, Layers, Award, User } from "lucide-react";
+import { Home, Layers, Trophy, Zap, User } from "lucide-react";
 import { useTelegram } from "@/components/providers/TelegramProvider";
 
 export function BottomNav() {
   const pathname = usePathname();
   const { triggerHaptic } = useTelegram();
 
-  // Hide bottom navigation during active test exam
-  if (pathname.startsWith("/exam/")) {
+  // Hide bottom navigation during active test exam or active quiz
+  if (pathname.startsWith("/exam/") || pathname.startsWith("/quiz/")) {
     return null;
   }
 
   const navItems = [
     { label: "Home", href: "/", icon: Home },
+    { label: "Quiz", href: "/quiz", icon: Zap },
     { label: "Mocks", href: "/tests", icon: Layers },
-    { label: "Chapters", href: "/chapters", icon: BookOpen },
-    { label: "Results", href: "/results", icon: Award },
+    { label: "Rank", href: "/leaderboard", icon: Trophy },
     { label: "Profile", href: "/profile", icon: User },
   ];
 

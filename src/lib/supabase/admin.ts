@@ -1,8 +1,8 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-let adminClient: ReturnType<typeof createClient> | null = null;
+let adminClient: SupabaseClient<any, "public", any> | null = null;
 
-export function getSupabaseAdminClient() {
+export function getSupabaseAdminClient(): SupabaseClient<any, "public", any> {
   if (adminClient) return adminClient;
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -10,7 +10,7 @@ export function getSupabaseAdminClient() {
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-  adminClient = createClient(supabaseUrl, serviceKey, {
+  adminClient = createClient<any>(supabaseUrl, serviceKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -19,3 +19,4 @@ export function getSupabaseAdminClient() {
 
   return adminClient;
 }
+

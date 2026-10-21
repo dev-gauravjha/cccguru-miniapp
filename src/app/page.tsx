@@ -110,6 +110,31 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* Duolingo-Style Interactive Quiz Banner */}
+        <section className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-700 text-white p-4 shadow-md shadow-emerald-700/20">
+          <div className="flex items-center justify-between gap-3 relative z-10">
+            <div className="space-y-1 min-w-0">
+              <span className="text-[10px] font-black uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full inline-block">
+                ⚡ Interactive Quiz
+              </span>
+              <h3 className="text-sm font-extrabold truncate">
+                Daily Speed Quiz Sprint
+              </h3>
+              <p className="text-[11px] text-emerald-100 line-clamp-1">
+                Instant feedback, streak multiplier & live explanations.
+              </p>
+            </div>
+            <Link
+              href="/quiz"
+              onClick={() => triggerHaptic("medium")}
+              className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl text-xs font-black shadow-md border-b-3 border-amber-600 active:border-b-0 active:translate-y-1 transition-all shrink-0 flex items-center gap-1"
+            >
+              <span>Play</span>
+              <Play className="w-3.5 h-3.5 fill-current" />
+            </Link>
+          </div>
+        </section>
+
         {/* Learning Progress Metrics */}
         <section className="grid grid-cols-3 gap-2.5">
           <div className="bg-white dark:bg-[#121626] border border-slate-200/80 dark:border-slate-800/80 p-3.5 rounded-2xl shadow-xs">
@@ -146,6 +171,38 @@ export default function HomePage() {
             <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-medium">
               Streak
             </div>
+          </div>
+        </section>
+
+        {/* Leaderboard Fast Access Card */}
+        <section className="bg-gradient-to-r from-amber-500/15 via-primary-500/10 to-indigo-500/15 border border-amber-300 dark:border-amber-700/60 p-4 rounded-2xl shadow-xs">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-black shadow-sm">
+                <Trophy className="w-5 h-5 fill-current" />
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <h3 className="text-xs font-bold text-slate-900 dark:text-white">
+                    CCCGuru Leaderboard
+                  </h3>
+                  <span className="text-[9px] bg-amber-500 text-white font-black px-1.5 py-0.2 rounded-full uppercase">
+                    Live
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Daily, Monthly & All-Time rankings
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/leaderboard"
+              onClick={() => triggerHaptic("medium")}
+              className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-xs active:scale-95 transition-all flex items-center gap-1"
+            >
+              <span>View</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
         </section>
 

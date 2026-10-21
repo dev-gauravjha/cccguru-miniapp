@@ -245,6 +245,7 @@ function sanitizeQuestion(q: Question): SanitizedQuestion {
  */
 export async function startTestAttempt(params: {
   studentId: string;
+  canonicalUserId?: string;
   studentName?: string;
   studentUsername?: string;
   studentType?: "telegram" | "web" | "guest" | "preview";
@@ -267,6 +268,7 @@ export async function startTestAttempt(params: {
   const attemptRecord: StudentTestAttempt = {
     id: attemptId,
     student_id: params.studentId,
+    canonical_user_id: params.canonicalUserId || null,
     student_type: params.studentType || "telegram",
     student_name: params.studentName || null,
     student_username: params.studentUsername || null,
@@ -290,12 +292,13 @@ export async function startTestAttempt(params: {
     test_item: item,
   };
 
-  // Try persisting to Supabase student_test_attempts table
+  // Persist attempt to Supabase student_test_attempts table (lean 1-row insert)
   const supabase = getSupabaseAdminClient();
   try {
     await (supabase as any).from("student_test_attempts").insert({
       id: attemptId,
       student_id: params.studentId,
+      canonical_user_id: params.canonicalUserId || null,
       student_type: params.studentType || "telegram",
       student_name: params.studentName || null,
       student_username: params.studentUsername || null,
@@ -312,7 +315,7 @@ export async function startTestAttempt(params: {
     // If table doesn't exist yet, gracefully fall back to memory
   }
 
-  // Always keep in memory cache for low-latency lookups
+  // Keep in memory cache for low-latency lookups
   memoryAttempts.set(attemptId, attemptRecord);
   memoryAnswers.set(attemptId, new Map());
 
@@ -327,7 +330,8 @@ export async function startTestAttempt(params: {
 
 /**
  * SAVE ANSWER:
- * Updates an individual response during the test
+ * In-memory low-latency response tracking during the test.
+ * Optimized for minimal DB costs: Zero intermediate DB writes per question!
  */
 export async function saveAttemptAnswer(params: {
   studentId: string;
@@ -363,37 +367,79 @@ export async function saveAttemptAnswer(params: {
   answersMap.set(params.questionId, updatedAnswer);
   memoryAnswers.set(params.attemptId, answersMap);
 
-  // Sync to Supabase if table is present
-  const supabase = getSupabaseAdminClient();
-  try {
-    await (supabase as any).from("student_attempt_answers").upsert(
-      {
-        attempt_id: params.attemptId,
-        question_id: params.questionId,
-        selected_option: params.selectedOption,
-        is_flagged: updatedAnswer.is_flagged,
-        time_spent_seconds: updatedAnswer.time_spent_seconds,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "attempt_id,question_id" }
-    );
-  } catch {
-    // Graceful fallback
-  }
-
   return { success: true };
 }
 
 /**
  * SUBMIT ATTEMPT:
- * Server-side evaluation against trusted answer keys, scoring, negative marking,
- * persistence, and generation of detailed question review.
+ * Server-side evaluation against authoritative answer keys, scoring, negative marking,
+ * point awarding (+1 per correct answer), and atomic persistence.
  */
 export async function submitTestAttempt(params: {
   studentId: string;
   attemptId: string;
+  canonicalUserId?: string;
+  answers?:
+    | Record<
+        string,
+        {
+          selectedOption: "A" | "B" | "C" | "D" | null;
+          isFlagged?: boolean;
+          timeSpentSeconds?: number;
+        }
+      >
+    | Array<{
+        questionId: string;
+        selectedOption: "A" | "B" | "C" | "D" | null;
+        isFlagged?: boolean;
+        timeSpentSeconds?: number;
+      }>;
 }) {
-  const attempt = memoryAttempts.get(params.attemptId);
+  let attempt = memoryAttempts.get(params.attemptId);
+  if (!attempt) {
+    const supabase = getSupabaseAdminClient();
+    try {
+      const { data: dbAttempt } = await (supabase as any)
+        .from("student_test_attempts")
+        .select("*, test_item:test_series_items(*)")
+        .eq("id", params.attemptId)
+        .maybeSingle();
+
+      if (dbAttempt) {
+        attempt = {
+          id: dbAttempt.id,
+          student_id: dbAttempt.student_id,
+          canonical_user_id: dbAttempt.canonical_user_id,
+          student_type: dbAttempt.student_type,
+          student_name: dbAttempt.student_name,
+          student_username: dbAttempt.student_username,
+          test_item_id: dbAttempt.test_item_id,
+          series_id: dbAttempt.series_id,
+          status: dbAttempt.status,
+          started_at: dbAttempt.started_at,
+          submitted_at: dbAttempt.submitted_at,
+          time_taken_seconds: dbAttempt.time_taken_seconds || 0,
+          duration_allowed_minutes: dbAttempt.duration_allowed_minutes || 90,
+          total_questions: dbAttempt.total_questions || 0,
+          attempted_count: dbAttempt.attempted_count || 0,
+          correct_count: dbAttempt.correct_count || 0,
+          incorrect_count: dbAttempt.incorrect_count || 0,
+          unanswered_count: dbAttempt.unanswered_count || 0,
+          score: parseFloat(dbAttempt.score || "0"),
+          total_marks: parseFloat(dbAttempt.total_marks || "100"),
+          accuracy: parseFloat(dbAttempt.accuracy || "0"),
+          negative_marking_applied: parseFloat(dbAttempt.negative_marking_applied || "0"),
+          created_at: dbAttempt.created_at,
+          updated_at: dbAttempt.updated_at,
+          test_item: dbAttempt.test_item,
+        };
+        memoryAttempts.set(params.attemptId, attempt);
+      }
+    } catch (err) {
+      console.warn("DB attempt fallback lookup error:", err);
+    }
+  }
+
   if (!attempt || attempt.student_id !== params.studentId) {
     throw new Error("Attempt not found or unauthorized");
   }
@@ -401,6 +447,36 @@ export async function submitTestAttempt(params: {
   if (attempt.status === "evaluated" || attempt.status === "submitted") {
     // Return existing evaluation idempotently
     return getAttemptReview(params.studentId, params.attemptId);
+  }
+
+  // Populate answersMap from payload if provided
+  if (params.answers) {
+    const map =
+      memoryAnswers.get(params.attemptId) ||
+      new Map<string, StudentAttemptAnswer>();
+
+    if (Array.isArray(params.answers)) {
+      params.answers.forEach((ans) => {
+        map.set(ans.questionId, {
+          attempt_id: params.attemptId,
+          question_id: ans.questionId,
+          selected_option: ans.selectedOption,
+          is_flagged: ans.isFlagged || false,
+          time_spent_seconds: ans.timeSpentSeconds || 0,
+        });
+      });
+    } else {
+      Object.entries(params.answers).forEach(([qId, ans]) => {
+        map.set(qId, {
+          attempt_id: params.attemptId,
+          question_id: qId,
+          selected_option: ans.selectedOption,
+          is_flagged: ans.isFlagged || false,
+          time_spent_seconds: ans.timeSpentSeconds || 0,
+        });
+      });
+    }
+    memoryAnswers.set(params.attemptId, map);
   }
 
   const item = await getTestSeriesItemById(attempt.test_item_id);
@@ -484,12 +560,13 @@ export async function submitTestAttempt(params: {
 
   memoryAttempts.set(params.attemptId, updatedAttempt);
 
-  // Sync evaluated attempt to Supabase
+  // Sync evaluated attempt to Supabase (score-only, 1-row update)
   const supabase = getSupabaseAdminClient();
   try {
-    await (supabase as any).from("student_test_attempts").upsert({
+    const { error: upsertErr } = await (supabase as any).from("student_test_attempts").upsert({
       id: params.attemptId,
       student_id: params.studentId,
+      canonical_user_id: params.canonicalUserId || null,
       status: "evaluated",
       submitted_at: submittedAt,
       time_taken_seconds: timeTakenSeconds,
@@ -502,13 +579,45 @@ export async function submitTestAttempt(params: {
       accuracy,
       updated_at: submittedAt,
     });
-  } catch {
-    // Fallback
+
+    if (upsertErr) {
+      console.error("[TestEngine] Error upserting student_test_attempts:", upsertErr);
+    }
+
+    // Official CCC Rule: Student must pass (score >= 50%) to qualify for Leaderboard entry!
+    const passingPercentage = rawQuestions.length > 0 ? (correctCount / rawQuestions.length) * 100 : 0;
+    const isPassed = passingPercentage >= 50;
+    const pointsToAward = isPassed ? correctCount : 0;
+
+    // Award leaderboard points (+1 per correct answer) ONLY IF student passed (score >= 50%)
+    if (params.canonicalUserId && pointsToAward > 0) {
+      const { error: lbErr } = await (supabase as any).from("leaderboard_point_events").insert({
+        canonical_user_id: params.canonicalUserId,
+        attempt_id: params.attemptId,
+        test_item_id: item.id,
+        points_awarded: pointsToAward,
+        correct_count: correctCount,
+        total_questions: rawQuestions.length,
+        created_at: submittedAt,
+      });
+
+      if (lbErr) {
+        console.error("[TestEngine] Error recording leaderboard point event:", lbErr);
+      }
+    }
+  } catch (err) {
+    console.error("[TestEngine] Unexpected error during attempt evaluation persistence:", err);
   }
+
+  const passingPercentage = rawQuestions.length > 0 ? (correctCount / rawQuestions.length) * 100 : 0;
+  const isPassed = passingPercentage >= 50;
+  const pointsAwarded = isPassed ? correctCount : 0;
 
   return {
     attempt: updatedAttempt,
     evaluatedReviews,
+    pointsAwarded,
+    isPassed,
   };
 }
 
@@ -583,23 +692,6 @@ export async function getAttemptReview(
   const rawQuestions = await getRawQuestionsForTest(attempt.test_item_id);
   const answersMap =
     memoryAnswers.get(attemptId) || new Map<string, StudentAttemptAnswer>();
-
-  // If memory answers missing, check Supabase
-  if (answersMap.size === 0) {
-    const supabase = getSupabaseAdminClient();
-    try {
-      const { data: dbAnswers } = await supabase
-        .from("student_attempt_answers")
-        .select("*")
-        .eq("attempt_id", attemptId);
-
-      if (dbAnswers) {
-        dbAnswers.forEach((a: any) => answersMap.set(a.question_id, a));
-      }
-    } catch {
-      // Ignore
-    }
-  }
 
   const evaluatedReviews: EvaluatedQuestionReview[] = rawQuestions.map((q) => {
     const userAns = answersMap.get(q.id);

@@ -80,10 +80,21 @@ export default function ExamPage({ params }: ExamPageProps) {
       }
 
       const data = await res.json();
+      if (
+        data.testItem &&
+        (data.testItem.test_type || data.testItem.type || "")
+          .toLowerCase()
+          .includes("quiz")
+      ) {
+        router.replace(`/quiz/${testId}`);
+        return;
+      }
+
       setAttemptId(data.attemptId);
       setTestItem(data.testItem);
       setQuestions(data.questions);
       setTimeLeft((data.durationMinutes || 90) * 60);
+
 
       // Prepopulate empty answers state
       const initialMap: typeof userAnswers = {};
@@ -271,6 +282,8 @@ export default function ExamPage({ params }: ExamPageProps) {
       // 1. Submit answers and evaluate on server
       const res = await fetch(`/api/mini-app/attempts/${attemptId}/submit`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answers: userAnswers }),
       });
 
       if (!res.ok) {

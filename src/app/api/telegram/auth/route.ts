@@ -51,8 +51,30 @@ export async function POST(req: NextRequest) {
     }
 
     const tgUser = verification.user;
+    let canonicalUserId: string | undefined;
+
+    // Resolve verified Telegram identity to internal canonical UUID
+    try {
+      const { getSupabaseAdminClient } = await import("@/lib/supabase/admin");
+      const supabase = getSupabaseAdminClient();
+      const { data: identData } = await supabase.rpc("resolve_telegram_identity", {
+        p_telegram_user_id: tgUser.id,
+        p_first_name: tgUser.first_name,
+        p_last_name: tgUser.last_name || null,
+        p_username: tgUser.username || null,
+        p_photo_url: tgUser.photo_url || null,
+      });
+
+      if (identData && (identData as any).canonical_user_id) {
+        canonicalUserId = (identData as any).canonical_user_id;
+      }
+    } catch (dbErr) {
+      console.warn("Failed to resolve telegram identity in DB:", dbErr);
+    }
+
     const session: StudentSession = {
       studentId: `tg_${tgUser.id}`,
+      canonicalUserId,
       studentType: "telegram",
       telegramUser: tgUser,
       name: `${tgUser.first_name} ${tgUser.last_name || ""}`.trim(),

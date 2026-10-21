@@ -157,10 +157,14 @@ export function verifyTelegramInitData(
       return { isValid: false, error: "Invalid Telegram signature" };
     }
 
-    // Validate auth_date (reject older than 24 hours to prevent replay attacks)
+    // Validate auth_date (configurable expiry window, initially 5 minutes = 300 seconds)
     const authDate = parseInt(params.get("auth_date") || "0", 10);
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const maxAgeSeconds = 86400; // 24 hours
+    const configuredExpiry = parseInt(
+      process.env.TELEGRAM_AUTH_EXPIRY_SECONDS || "300",
+      10
+    );
+    const maxAgeSeconds = Math.max(60, configuredExpiry || 300);
 
     if (!authDate || nowSeconds - authDate > maxAgeSeconds) {
       return { isValid: false, error: "Authentication payload has expired" };
@@ -226,6 +230,7 @@ export async function clearStudentSessionCookie() {
 export function createPreviewSession(): StudentSession {
   return {
     studentId: "preview_student_demo",
+    canonicalUserId: "00000000-0000-0000-0000-000000000001",
     studentType: "preview",
     telegramUser: {
       id: 999999999,

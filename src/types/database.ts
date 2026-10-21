@@ -154,6 +154,7 @@ export interface StudentTestAttempt {
   created_at: string;
   updated_at: string;
   test_item?: TestSeriesItem | null;
+  canonical_user_id?: string | null;
 }
 
 export interface StudentAttemptAnswer {
@@ -176,3 +177,51 @@ export interface EvaluatedQuestionReview extends SanitizedQuestion {
   is_flagged: boolean;
   time_spent_seconds: number;
 }
+
+// ============================================================
+// Leaderboard Entities
+// ============================================================
+
+export interface LeaderboardProfile {
+  id: string;
+  auth_user_id: string | null;
+  display_name: string;
+  avatar_url: string | null;
+  is_public: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LeaderboardPointEvent {
+  id: string;
+  canonical_user_id: string;
+  attempt_id: string;
+  test_item_id: string;
+  points_awarded: number;
+  correct_count: number;
+  total_questions: number;
+  created_at: string;
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  canonical_user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  points: number;
+  tests_completed: number;
+  last_active_at?: string | null;
+}
+
+export interface UserLeaderboardRank {
+  found: boolean;
+  canonical_user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  points: number;
+  tests_completed: number;
+  rank: number | null;
+  period: "daily" | "monthly" | "all_time";
+  message?: string;
+}
+

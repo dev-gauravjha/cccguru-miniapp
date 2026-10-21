@@ -12,9 +12,25 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     const session = await getStudentSession();
     const studentId = session?.studentId || "preview_student_demo";
 
+    let answers: any = undefined;
+    try {
+      const body = await req.json();
+      answers = body.answers;
+    } catch {
+      // Body may be empty if already synced in memory
+    }
+
+    const canonicalUserId =
+      session?.canonicalUserId ||
+      (studentId === "preview_student_demo"
+        ? "00000000-0000-0000-0000-000000000001"
+        : undefined);
+
     const result = await submitTestAttempt({
       studentId,
+      canonicalUserId,
       attemptId,
+      answers,
     });
 
     return NextResponse.json(result);
