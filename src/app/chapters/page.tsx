@@ -129,7 +129,7 @@ export default function ChaptersPage() {
               {chapters.length > 0 ? `${chapters.length} Official Syllabus Chapters 🗺️` : "NIELIT CCC Chapters 🗺️"}
             </h2>
             <p className="text-xs text-primary-100 leading-relaxed max-w-[320px]">
-              Progress along the CCC learning path. Complete each chapter test to earn +100 XP and build exam readiness.
+              Progress along the CCC learning path. Complete each chapter test to earn points and build exam readiness.
             </p>
           </div>
 
@@ -190,7 +190,7 @@ export default function ChaptersPage() {
                           </span>
                           <span className="text-[10px] font-black text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800 flex items-center gap-1">
                             <Star className="w-3 h-3 fill-current text-amber-500" />
-                            +100 XP
+                            +100 Points
                           </span>
                         </div>
 

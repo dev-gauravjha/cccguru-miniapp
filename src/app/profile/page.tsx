@@ -13,6 +13,7 @@ import {
   BookOpen,
   Award,
   ChevronRight,
+  ArrowRight,
   Sparkles,
   Check,
   Send,
@@ -26,6 +27,8 @@ import {
   Star,
   Target,
   Zap,
+  ClipboardCheck,
+  FileCheck,
 } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { useTelegram } from "@/components/providers/TelegramProvider";
@@ -36,11 +39,13 @@ import {
   GameProgressBar,
   getPlayerLevel,
 } from "@/components/gamified/GamifiedWidgets";
+import { getSavedLanguage, setSavedLanguage, LanguageMode } from "@/lib/language";
+import { getPlayerBadges } from "@/lib/badges";
 
 export default function ProfilePage() {
   const { user, session, isDevPreview, logout, triggerHaptic } = useTelegram();
   const [themeMode, setThemeMode] = useState<"light" | "dark">("light");
-  const [langPreference, setLangPreference] = useState<"en" | "hi">("hi");
+  const [langPreference, setLangPreference] = useState<LanguageMode>("hi");
 
   // Dashboard stats state
   const [stats, setStats] = useState<{
@@ -48,12 +53,14 @@ export default function ProfilePage() {
     avgAccuracy: number;
     totalQuestionsSolved: number;
     dayStreak: number;
+    totalPoints: number;
     preparationPercentage: number;
   }>({
     testsTaken: 0,
     avgAccuracy: 0,
     totalQuestionsSolved: 0,
     dayStreak: 1,
+    totalPoints: 0,
     preparationPercentage: 20,
   });
 
@@ -68,13 +75,30 @@ export default function ProfilePage() {
     session?.authUserId ? "Linked CCCGuru Account" : null
   );
 
+  // Sync saved language preference on mount
+  useEffect(() => {
+    setLangPreference(getSavedLanguage());
+
+    const handleLangChange = (e: any) => {
+      if (e.detail) setLangPreference(e.detail);
+    };
+    window.addEventListener("ccc_language_changed", handleLangChange);
+    return () => {
+      window.removeEventListener("ccc_language_changed", handleLangChange);
+    };
+  }, []);
+
   const fetchStats = useCallback(async () => {
     try {
       const res = await fetch("/api/mini-app/dashboard");
       if (res.ok) {
         const json = await res.json();
         if (json.stats) {
-          setStats(json.stats);
+          setStats((prev) => ({
+            ...prev,
+            ...json.stats,
+            totalPoints: json.stats.totalPoints ?? prev.totalPoints,
+          }));
         }
       }
     } catch {
@@ -128,56 +152,20 @@ export default function ProfilePage() {
   const studentName = session?.name || "Student";
   const studentUsername = session?.username || (isDevPreview ? "demo_student" : "N/A");
 
+  // Player level based on verified total points
   const playerLevel = getPlayerLevel(
-    stats.testsTaken,
+    stats.totalPoints,
     stats.totalQuestionsSolved,
     stats.avgAccuracy
   );
 
-  const achievements = [
-    {
-      id: "first_blood",
-      title: "First Step",
-      desc: "Completed your first mock test",
-      emoji: "🎯",
-      isUnlocked: stats.testsTaken >= 1,
-    },
-    {
-      id: "on_fire",
-      title: "On Fire",
-      desc: "Maintained a 3-day learning streak",
-      emoji: "🔥",
-      isUnlocked: stats.dayStreak >= 3,
-    },
-    {
-      id: "centurion",
-      title: "Centurion",
-      desc: "Solved 100+ questions across tests",
-      emoji: "🛡️",
-      isUnlocked: stats.totalQuestionsSolved >= 100,
-    },
-    {
-      id: "sharpshooter",
-      title: "Sharpshooter",
-      desc: "Achieved 60%+ average accuracy",
-      emoji: "🏹",
-      isUnlocked: stats.avgAccuracy >= 60,
-    },
-    {
-      id: "scholar",
-      title: "Scholar",
-      desc: "Completed 5 or more test attempts",
-      emoji: "⚡",
-      isUnlocked: stats.testsTaken >= 5,
-    },
-    {
-      id: "grandmaster",
-      title: "CCC Master",
-      desc: "Attained Level 3 or higher in learning progress",
-      emoji: "👑",
-      isUnlocked: playerLevel.level >= 3,
-    },
-  ];
+  // Multi-tier Badges computed from shared badges model
+  const badges = getPlayerBadges(stats);
+  const unlockedBadges = badges.filter((b) => b.isUnlocked);
+  const lockedBadges = badges.filter((b) => !b.isUnlocked);
+  const unlockedCount = unlockedBadges.length;
+  const totalBadges = badges.length;
+  const badgeProgressPercent = Math.round((unlockedCount / totalBadges) * 100);
 
   const toggleTheme = () => {
     triggerHaptic("selection");
@@ -200,7 +188,11 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#090b14] flex flex-col">
-      <Header title="Player Profile" />
+      <Header
+        title="Player Profile"
+        streak={stats.dayStreak}
+        points={stats.totalPoints}
+      />
 
       <div className="flex-1 max-w-md mx-auto w-full px-4 pt-3.5 pb-12 space-y-4">
         {/* Player Character RPG Card */}
@@ -249,19 +241,19 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Level XP Progress Bar */}
+          {/* Level Points Progress Bar */}
           <div className="bg-white/10 backdrop-blur-sm p-3 rounded-2xl border border-white/15 space-y-1.5">
             <div className="flex items-center justify-between text-xs font-bold">
               <span className="flex items-center gap-1 text-amber-200">
                 <Star className="w-3.5 h-3.5 fill-current text-amber-300" />
-                Player XP
+                Player Points
               </span>
               <span className="text-white/90">
-                {playerLevel.xp} / {playerLevel.nextThreshold} XP
+                {stats.totalPoints} / {playerLevel.nextThreshold} Points
               </span>
             </div>
             <GameProgressBar
-              progress={(playerLevel.xp / playerLevel.nextThreshold) * 100}
+              progress={(stats.totalPoints / playerLevel.nextThreshold) * 100}
               color="amber"
               height="sm"
             />
@@ -276,17 +268,25 @@ export default function ProfilePage() {
 
         {/* Player Stats Matrix (4 Tactile Tiles) */}
         <div className="grid grid-cols-4 gap-2">
-          <GameCard className="p-2.5 text-center flex flex-col items-center justify-center">
-            <div className="w-7 h-7 rounded-lg bg-primary-100 dark:bg-primary-950/80 text-primary-600 dark:text-primary-400 flex items-center justify-center mb-1">
-              <Target className="w-4 h-4" />
-            </div>
-            <div className="text-base font-black text-slate-900 dark:text-white leading-none">
-              {stats.testsTaken}
-            </div>
-            <div className="text-[9px] text-slate-500 font-bold uppercase mt-1">
-              Tests
-            </div>
-          </GameCard>
+          <Link
+            href="/results"
+            onClick={() => triggerHaptic("selection")}
+            className="block cursor-pointer"
+            title="View Test Results"
+          >
+            <GameCard className="p-2.5 text-center flex flex-col items-center justify-center hover:border-primary-400 dark:hover:border-primary-600 transition-all group">
+              <div className="w-7 h-7 rounded-lg bg-primary-100 dark:bg-primary-950/80 text-primary-600 dark:text-primary-400 flex items-center justify-center mb-1 group-hover:scale-110 transition-transform">
+                <Target className="w-4 h-4" />
+              </div>
+              <div className="text-base font-black text-slate-900 dark:text-white leading-none">
+                {stats.testsTaken}
+              </div>
+              <div className="text-[9px] text-slate-500 font-bold uppercase mt-1 flex items-center justify-center gap-0.5">
+                <span>Tests</span>
+                <ChevronRight className="w-2.5 h-2.5 text-slate-400" />
+              </div>
+            </GameCard>
+          </Link>
 
           <GameCard className="p-2.5 text-center flex flex-col items-center justify-center">
             <div className="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-1">
@@ -325,48 +325,110 @@ export default function ProfilePage() {
           </GameCard>
         </div>
 
-        {/* Achievement Trophy Showcase */}
-        <section className="space-y-2.5 pt-1">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-1.5">
-              <Award className="w-4 h-4 text-amber-500" />
-              Trophies & Badges
-            </h3>
-            <span className="text-[11px] text-slate-400 font-bold">
-              {achievements.filter((a) => a.isUnlocked).length} / {achievements.length} Unlocked
-            </span>
+        {/* View Results & Test History Action Card */}
+        <Link
+          href="/results"
+          onClick={() => triggerHaptic("medium")}
+          className="game-card p-3.5 flex items-center justify-between group hover:border-primary-400 dark:hover:border-primary-500 transition-all border-b-4 border-b-primary-600/30 cursor-pointer"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-primary-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-primary-500/20 shrink-0 group-hover:scale-105 transition-transform">
+              <ClipboardCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-black text-slate-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+                  My Test Results & History
+                </h3>
+                <span className="text-[9px] font-black bg-primary-100 dark:bg-primary-950/80 text-primary-700 dark:text-primary-300 px-2 py-0.2 rounded-full border border-primary-200 dark:border-primary-800">
+                  {stats.testsTaken} {stats.testsTaken === 1 ? "Test" : "Tests"}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                Check scorecards, accuracy & official answer keys
+              </p>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5">
-            {achievements.map((ach) => (
-              <div
-                key={ach.id}
-                className={`game-card p-3 space-y-1.5 transition-all ${
-                  ach.isUnlocked
-                    ? "border-amber-300 dark:border-amber-600/50 bg-amber-500/5"
-                    : "opacity-60 grayscale"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xl">{ach.emoji}</span>
-                  {ach.isUnlocked ? (
-                    <span className="text-[9px] font-black uppercase text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 px-1.5 py-0.2 rounded-md">
-                      Earned
-                    </span>
-                  ) : (
-                    <span className="text-[9px] font-bold text-slate-400">
-                      Locked
-                    </span>
-                  )}
-                </div>
-                <h4 className="text-xs font-black text-slate-900 dark:text-white leading-tight">
-                  {ach.title}
-                </h4>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
-                  {ach.desc}
-                </p>
+          <div className="w-7 h-7 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:text-primary-600 group-hover:translate-x-0.5 transition-all shrink-0">
+            <ChevronRight className="w-4 h-4" />
+          </div>
+        </Link>
+
+        {/* Collapsed Badges & Achievements Section */}
+        <section className="game-card p-4 space-y-3 border-amber-300/70 dark:border-amber-700/60 bg-gradient-to-br from-amber-500/5 via-transparent to-primary-500/5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 flex items-center justify-center border border-amber-200 dark:border-amber-800">
+                <Award className="w-4 h-4" />
               </div>
-            ))}
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white">
+                  Badges & Trophies
+                </h3>
+                <span className="text-[10px] text-slate-400 font-medium">
+                  Gamified syllabus milestones
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full shadow-xs">
+                {unlockedCount} / {totalBadges} Earned
+              </span>
+            </div>
+          </div>
+
+          {/* Badge Collection Progress Bar */}
+          <div className="bg-slate-100 dark:bg-slate-800/80 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-1">
+            <div className="flex items-center justify-between text-[11px] font-bold">
+              <span className="text-slate-500 dark:text-slate-400">
+                Cabinet Completion
+              </span>
+              <span className="text-amber-600 dark:text-amber-400 font-black">
+                {badgeProgressPercent}%
+              </span>
+            </div>
+            <GameProgressBar
+              progress={badgeProgressPercent}
+              color="amber"
+              height="sm"
+            />
+          </div>
+
+          {/* Quick Preview Chips Row: Earned Emojis + Next Targets */}
+          <div className="flex items-center justify-between gap-1.5 pt-0.5">
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+              {unlockedBadges.length > 0 ? (
+                unlockedBadges.slice(0, 5).map((b) => (
+                  <div
+                    key={b.id}
+                    className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-700 flex items-center justify-center text-sm shadow-2xs shrink-0"
+                    title={`${b.title} (${b.level})`}
+                  >
+                    {b.emoji}
+                  </div>
+                ))
+              ) : (
+                <span className="text-[11px] text-slate-400 italic">
+                  Take tests to unlock your first trophy!
+                </span>
+              )}
+              {unlockedBadges.length > 5 && (
+                <span className="text-[10px] font-black text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg shrink-0">
+                  +{unlockedBadges.length - 5}
+                </span>
+              )}
+            </div>
+
+            <Link
+              href="/profile/badges"
+              onClick={() => triggerHaptic("medium")}
+              className="btn-3d btn-3d-amber inline-flex items-center gap-1 text-[11px] font-black px-3 py-1.5 rounded-xl shrink-0 cursor-pointer shadow-xs"
+            >
+              <span>View All ({totalBadges})</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
         </section>
 
@@ -459,31 +521,60 @@ export default function ProfilePage() {
                   Question Language
                 </span>
                 <span className="text-[10px] text-slate-400 font-medium">
-                  Default bilingual preference
+                  {langPreference === "hi"
+                    ? "Hindi only (saved)"
+                    : langPreference === "en"
+                    ? "English only (saved)"
+                    : "Bilingual: Hindi & English (saved)"}
                 </span>
               </div>
             </div>
 
             <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-xs font-bold">
               <button
-                onClick={() => setLangPreference("en")}
-                className={`px-2.5 py-1 rounded-md text-xs font-black cursor-pointer transition-colors ${
+                onClick={() => {
+                  triggerHaptic("selection");
+                  setLangPreference("en");
+                  setSavedLanguage("en");
+                }}
+                className={`px-2 py-1 rounded-md text-xs font-black cursor-pointer transition-colors ${
                   langPreference === "en"
                     ? "bg-white dark:bg-slate-700 text-primary-600 dark:text-primary-400 shadow-xs"
                     : "text-slate-500"
                 }`}
+                title="English only"
               >
                 EN
               </button>
               <button
-                onClick={() => setLangPreference("hi")}
-                className={`px-2.5 py-1 rounded-md text-xs font-black cursor-pointer transition-colors ${
+                onClick={() => {
+                  triggerHaptic("selection");
+                  setLangPreference("hi");
+                  setSavedLanguage("hi");
+                }}
+                className={`px-2 py-1 rounded-md text-xs font-black cursor-pointer transition-colors ${
                   langPreference === "hi"
                     ? "bg-white dark:bg-slate-700 text-primary-600 dark:text-primary-400 shadow-xs"
                     : "text-slate-500"
                 }`}
+                title="हिन्दी"
               >
                 हिन्दी
+              </button>
+              <button
+                onClick={() => {
+                  triggerHaptic("selection");
+                  setLangPreference("bilingual");
+                  setSavedLanguage("bilingual");
+                }}
+                className={`px-2 py-1 rounded-md text-xs font-black cursor-pointer transition-colors ${
+                  langPreference === "bilingual"
+                    ? "bg-white dark:bg-slate-700 text-primary-600 dark:text-primary-400 shadow-xs"
+                    : "text-slate-500"
+                }`}
+                title="Bilingual / Both"
+              >
+                Both
               </button>
             </div>
           </div>
@@ -515,6 +606,50 @@ export default function ProfilePage() {
               Toggle
             </button>
           </div>
+
+          {/* View Results Link */}
+          <Link
+            href="/results"
+            onClick={() => triggerHaptic("selection")}
+            className="p-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-primary-100 dark:bg-primary-950/60 text-primary-600 flex items-center justify-center">
+                <FileCheck className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                  Past Results & Scorecards
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium">
+                  Review completed tests, accuracy & answer keys
+                </span>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-slate-400" />
+          </Link>
+
+          {/* Badges Cabinet Link */}
+          <Link
+            href="/profile/badges"
+            onClick={() => triggerHaptic("selection")}
+            className="p-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center">
+                <Award className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                  Badges & Trophy Showcase
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium">
+                  {unlockedCount} / {totalBadges} Badges earned
+                </span>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-slate-400" />
+          </Link>
 
           {/* Official Website Link */}
           <a

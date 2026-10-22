@@ -30,6 +30,7 @@ import {
   isSoundEnabled,
   setSoundEnabled,
 } from "@/lib/quiz-sounds";
+import { getSavedLanguage, setSavedLanguage } from "@/lib/language";
 import type { SanitizedQuestion, TestSeriesItem } from "@/types/database";
 
 type LanguageMode = "en" | "hi" | "both";
@@ -69,7 +70,7 @@ export default function ExamPage({ params }: ExamPageProps) {
   >({});
 
   const [timeLeft, setTimeLeft] = useState(90 * 60);
-  const [languageMode, setLanguageMode] = useState<LanguageMode>("both");
+  const [languageMode, setLanguageMode] = useState<LanguageMode>("hi");
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
@@ -77,9 +78,21 @@ export default function ExamPage({ params }: ExamPageProps) {
 
   const questionStartTime = useRef<number>(Date.now());
 
-  // Initialize sound state from localStorage
+  // Initialize sound state and language preference from localStorage
   useEffect(() => {
     setSoundOn(isSoundEnabled());
+    const saved = getSavedLanguage();
+    setLanguageMode(saved === "bilingual" ? "both" : saved);
+
+    const handleLangChange = (e: any) => {
+      if (e.detail) {
+        setLanguageMode(e.detail === "bilingual" ? "both" : e.detail);
+      }
+    };
+    window.addEventListener("ccc_language_changed", handleLangChange);
+    return () => {
+      window.removeEventListener("ccc_language_changed", handleLangChange);
+    };
   }, []);
 
   const toggleSound = () => {
@@ -460,6 +473,7 @@ export default function ExamPage({ params }: ExamPageProps) {
               onClick={() => {
                 playTapSound();
                 setLanguageMode("en");
+                setSavedLanguage("en");
               }}
               className={`px-1.5 py-0.5 rounded-lg transition-all ${
                 languageMode === "en"
@@ -473,6 +487,7 @@ export default function ExamPage({ params }: ExamPageProps) {
               onClick={() => {
                 playTapSound();
                 setLanguageMode("hi");
+                setSavedLanguage("hi");
               }}
               className={`px-1.5 py-0.5 rounded-lg transition-all ${
                 languageMode === "hi"
@@ -486,6 +501,7 @@ export default function ExamPage({ params }: ExamPageProps) {
               onClick={() => {
                 playTapSound();
                 setLanguageMode("both");
+                setSavedLanguage("bilingual");
               }}
               className={`px-1.5 py-0.5 rounded-lg transition-all ${
                 languageMode === "both"
@@ -512,7 +528,7 @@ export default function ExamPage({ params }: ExamPageProps) {
                 currentQ.difficulty,
               )}`}
             >
-              {currentQ.difficulty || "Medium"} • +100 XP
+              {currentQ.difficulty || "Medium"} • +100 Points
             </span>
           </div>
 
@@ -536,22 +552,33 @@ export default function ExamPage({ params }: ExamPageProps) {
 
         {/* Gamified Question Card (Raised 3D container) */}
         <div className="game-card p-5 space-y-3.5">
-          {(languageMode === "en" || languageMode === "both") && (
+          {languageMode === "en" && (
             <p className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 leading-relaxed tracking-normal">
-              {currentQ.question_en}
+              {currentQ.question_en || currentQ.question_hi}
             </p>
           )}
 
-          {languageMode === "both" && currentQ.question_hi && (
-            <div className="border-t border-dashed border-slate-200 dark:border-slate-800 my-2" />
+          {languageMode === "hi" && (
+            <p className="text-base sm:text-lg font-medium text-slate-900 dark:text-slate-100 leading-relaxed font-sans tracking-normal">
+              {currentQ.question_hi || currentQ.question_en}
+            </p>
           )}
 
-          {(languageMode === "hi" || languageMode === "both") &&
-            currentQ.question_hi && (
-              <p className="text-base sm:text-lg font-medium text-slate-800 dark:text-slate-200 leading-relaxed font-sans tracking-normal">
-                {currentQ.question_hi}
+          {languageMode === "both" && (
+            <>
+              <p className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 leading-relaxed tracking-normal">
+                {currentQ.question_en}
               </p>
-            )}
+              {currentQ.question_hi && (
+                <>
+                  <div className="border-t border-dashed border-slate-200 dark:border-slate-800 my-2" />
+                  <p className="text-base sm:text-lg font-medium text-slate-800 dark:text-slate-200 leading-relaxed font-sans tracking-normal">
+                    {currentQ.question_hi}
+                  </p>
+                </>
+              )}
+            </>
+          )}
         </div>
 
         {/* Tactile 3D Options Selector */}
@@ -587,30 +614,56 @@ export default function ExamPage({ params }: ExamPageProps) {
                 </div>
 
                 <div className="flex-1 space-y-1 min-w-0 pt-0.5">
-                  {(languageMode === "en" || languageMode === "both") &&
-                    optEn && (
-                      <div
-                        className={`text-sm sm:text-[15px] font-bold leading-relaxed ${
-                          isSelected
-                            ? "text-primary-950 dark:text-primary-100"
-                            : "text-slate-800 dark:text-slate-200"
-                        }`}
-                      >
-                        {optEn}
-                      </div>
-                    )}
-                  {(languageMode === "hi" || languageMode === "both") &&
-                    optHi && (
-                      <div
-                        className={`text-sm sm:text-[15px] font-medium leading-relaxed font-sans ${
-                          isSelected
-                            ? "text-primary-900 dark:text-primary-200"
-                            : "text-slate-700 dark:text-slate-300"
-                        }`}
-                      >
-                        {optHi}
-                      </div>
-                    )}
+                  {languageMode === "en" && (
+                    <div
+                      className={`text-sm sm:text-[15px] font-bold leading-relaxed ${
+                        isSelected
+                          ? "text-primary-950 dark:text-primary-100"
+                          : "text-slate-800 dark:text-slate-200"
+                      }`}
+                    >
+                      {optEn || optHi}
+                    </div>
+                  )}
+
+                  {languageMode === "hi" && (
+                    <div
+                      className={`text-sm sm:text-[15px] font-medium leading-relaxed font-sans ${
+                        isSelected
+                          ? "text-primary-900 dark:text-primary-200"
+                          : "text-slate-700 dark:text-slate-300"
+                      }`}
+                    >
+                      {optHi || optEn}
+                    </div>
+                  )}
+
+                  {languageMode === "both" && (
+                    <>
+                      {optEn && (
+                        <div
+                          className={`text-sm sm:text-[15px] font-bold leading-relaxed ${
+                            isSelected
+                              ? "text-primary-950 dark:text-primary-100"
+                              : "text-slate-800 dark:text-slate-200"
+                          }`}
+                        >
+                          {optEn}
+                        </div>
+                      )}
+                      {optHi && (
+                        <div
+                          className={`text-sm sm:text-[15px] font-medium leading-relaxed font-sans ${
+                            isSelected
+                              ? "text-primary-900 dark:text-primary-200"
+                              : "text-slate-700 dark:text-slate-300"
+                          }`}
+                        >
+                          {optHi}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
 
                 {isSelected && (
@@ -770,7 +823,7 @@ export default function ExamPage({ params }: ExamPageProps) {
                 Submit Test Attempt? 🏁
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                Your answers will be evaluated with official CCC grading and XP
+                Your answers will be evaluated with official CCC grading and
                 points will be added to your profile!
               </p>
             </div>

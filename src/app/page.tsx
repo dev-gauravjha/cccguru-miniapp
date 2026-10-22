@@ -49,6 +49,7 @@ interface DashboardData {
     avgAccuracy: number;
     totalQuestionsSolved: number;
     dayStreak: number;
+    totalPoints?: number;
     preparationPercentage: number;
   };
   featuredSeries: any[];
@@ -110,13 +111,12 @@ export default function HomePage() {
   const accuracy = data?.stats?.avgAccuracy ?? 0;
   const streak = data?.stats?.dayStreak ?? 1;
 
-  // Real player XP: either from verified leaderboard points or computed from actual solved tests
-  const realPoints =
-    userRank?.points !== undefined && userRank.points > 0
-      ? userRank.points
-      : testsTaken * 10 + questionsSolved;
+  // Real player points: unified from verified ledger and evaluated attempts
+  const totalPoints =
+    data?.stats?.totalPoints ??
+    (userRank?.points !== undefined && userRank.points > 0 ? userRank.points : 0);
 
-  const playerLevel = getPlayerLevel(testsTaken, questionsSolved, accuracy);
+  const playerLevel = getPlayerLevel(totalPoints, questionsSolved, accuracy);
 
   // Resume item: either the most recent completed test or Chapter 1
   const recentAttempt = data?.recentResults?.[0];
@@ -126,14 +126,14 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#090b14] flex flex-col selection:bg-purple-500 selection:text-white">
       {/* A. Header */}
-      <Header streak={streak} xp={realPoints} />
+      <Header streak={streak} points={totalPoints} />
 
       <div className="flex-1 max-w-md mx-auto w-full px-4 pt-3.5 pb-12 space-y-4">
         {/* B. Welcome Section (Compact, Above the fold) */}
         <section className="bg-white dark:bg-[#121626] border-2 border-slate-200 dark:border-slate-800 border-b-[4px] border-b-slate-300 dark:border-b-slate-900 rounded-3xl p-4 shadow-2xs flex items-center justify-between gap-3">
           <div className="space-y-1 min-w-0">
             <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950/80 px-2 py-0.5 rounded-md border border-primary-200 dark:border-primary-800">
-              <Sparkles className="w-3 h-3 text-amber-500 fill-amber-500" />
+              <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
               {playerLevel.title}
             </span>
             <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight leading-tight truncate">
@@ -164,13 +164,13 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* 2. Total XP / Points */}
+          {/* 2. Total Points */}
           <div className="game-card p-3 text-center flex flex-col items-center justify-center">
             <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-1 border border-amber-200 dark:border-amber-800">
               <Star className="w-4 h-4 fill-amber-500 text-amber-500" />
             </div>
             <div className="text-base font-black text-slate-900 dark:text-white leading-none">
-              {realPoints} XP
+              {totalPoints}
             </div>
             <div className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase mt-1">
               Points
@@ -367,7 +367,7 @@ export default function HomePage() {
                     Speed Quiz
                   </h4>
                   <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 font-medium line-clamp-1">
-                    Instant scoring & XP
+                    Instant scoring & Points
                   </p>
                 </div>
               </div>

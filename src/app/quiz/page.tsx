@@ -86,7 +86,11 @@ export default function QuizHomePage() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#090b14] flex flex-col pb-24">
-      <Header title="CCC Quiz" />
+      <Header
+        title="CCC Quiz"
+        streak={stats.bestStreak || 1}
+        points={stats.totalPoints}
+      />
 
       <main className="flex-1 max-w-md mx-auto w-full px-4 pt-4 space-y-5">
         {/* Top Hero Banner: Featured Sprint from Supabase */}

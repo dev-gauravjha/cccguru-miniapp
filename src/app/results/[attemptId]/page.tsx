@@ -159,7 +159,7 @@ export default function ResultDetailPage({ params }: ResultDetailPageProps) {
       <Header title="Result Evaluation" />
 
       {/* Confetti Celebration on Passing */}
-      <ConfettiEffects active={isPassed} count={36} />
+      <ConfettiEffects active={isPassed} variant="victory" />
 
       <div className="flex-1 max-w-md mx-auto w-full px-4 pt-3.5 pb-12 space-y-4">
         {/* 1. Gamified Score & Grade Hero Card */}
@@ -235,7 +235,7 @@ export default function ResultDetailPage({ params }: ResultDetailPageProps) {
           <div className="absolute -left-6 -top-6 w-36 h-36 rounded-full bg-white/10 blur-xl pointer-events-none" />
         </div>
 
-        {/* 2. Leaderboard & XP Points Reward Banner */}
+        {/* 2. Leaderboard & Points Reward Banner */}
         {isPassed ? (
           <div className="game-card p-4 bg-gradient-to-r from-amber-500/15 via-emerald-500/10 to-teal-500/15 border-2 border-amber-300 dark:border-amber-700 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -244,7 +244,7 @@ export default function ResultDetailPage({ params }: ResultDetailPageProps) {
               </div>
               <div>
                 <p className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <span>+{attempt.score} XP Points Earned!</span>
+                  <span>+{attempt.score} Points Earned!</span>
                   <span className="bg-amber-400/30 text-amber-700 dark:text-amber-300 text-[10px] px-1.5 py-0.2 rounded-md font-extrabold">
                     Ranked
                   </span>

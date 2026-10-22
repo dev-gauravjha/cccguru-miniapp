@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useTelegram } from "@/components/providers/TelegramProvider";
 import { ConfettiEffects } from "@/components/quiz/ConfettiEffects";
+import { fireCorrectAnswerConfetti } from "@/lib/confetti";
 import { QuizCompletion } from "@/components/quiz/QuizCompletion";
 import type { SanitizedQuizQuestion } from "@/lib/quiz-engine";
 import {
@@ -27,7 +28,11 @@ import {
   isSoundEnabled,
   setSoundEnabled,
 } from "@/lib/quiz-sounds";
-
+import {
+  getSavedLanguage,
+  setSavedLanguage,
+  type LanguageMode,
+} from "@/lib/language";
 
 interface QuizPlayerProps {
   quizId: string;
@@ -59,15 +64,24 @@ export function QuizPlayer({ quizId }: QuizPlayerProps) {
   const [questions, setQuestions] = useState<SanitizedQuizQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  const [language, setLanguage] = useState<"en" | "hi">("en");
+  const [languageMode, setLanguageMode] = useState<LanguageMode>("hi");
   const [soundOn, setSoundOn] = useState(true);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [feedback, setFeedback] = useState<AnswerFeedback | null>(null);
 
-  // Sync sound preference on mount
+  // Sync sound and language preference on mount
   useEffect(() => {
     setSoundOn(isSoundEnabled());
+    setLanguageMode(getSavedLanguage());
+
+    const handleLangChange = (e: any) => {
+      if (e.detail) setLanguageMode(e.detail);
+    };
+    window.addEventListener("ccc_language_changed", handleLangChange);
+    return () => {
+      window.removeEventListener("ccc_language_changed", handleLangChange);
+    };
   }, []);
 
 
@@ -172,6 +186,7 @@ export function QuizPlayer({ quizId }: QuizPlayerProps) {
       if (data.isCorrect) {
         triggerHaptic("success");
         playCorrectSound(data.streak || 0);
+        fireCorrectAnswerConfetti({ streak: data.streak || 0 });
         setShowParticles(true);
         setTimeout(() => setShowParticles(false), 1200);
       } else {
@@ -300,66 +315,72 @@ export function QuizPlayer({ quizId }: QuizPlayerProps) {
     Math.round(((currentIndex + (feedback ? 1 : 0)) / totalQuestions) * 100)
   );
 
-  const isHindi = language === "hi";
+  // Language extraction
+  const isHindiOnly = languageMode === "hi";
+  const isEnglishOnly = languageMode === "en";
+  const isBilingual = languageMode === "bilingual";
 
-  // Requirement 8: Extract bilingual options with graceful fallback
-  const getOptionText = (key: "A" | "B" | "C" | "D") => {
-    if (!currentQ) return "";
-    if (isHindi) {
-      return (
-        currentQ.bilingual?.hi?.options?.[key] ||
-        (currentQ as any)[`option_${key.toLowerCase()}_hi`] ||
-        currentQ.bilingual?.en?.options?.[key] ||
-        (currentQ as any)[`option_${key.toLowerCase()}_en`] ||
-        ""
-      );
-    }
-    return (
+  const questionEn =
+    currentQ?.bilingual?.en?.question || currentQ?.question_en || "";
+  const questionHi =
+    currentQ?.bilingual?.hi?.question || currentQ?.question_hi || "";
+
+  // The primary question according to user's saved preference
+  const primaryQuestionText = isHindiOnly
+    ? questionHi || questionEn
+    : isEnglishOnly
+    ? questionEn || questionHi
+    : questionEn || questionHi;
+
+  // Secondary question only rendered when mode is explicitly 'bilingual'
+  const bilingualSecondaryQuestionText = isBilingual
+    ? questionHi && questionHi !== primaryQuestionText
+      ? questionHi
+      : null
+    : null;
+
+  // Options extraction
+  const getOption = (key: "A" | "B" | "C" | "D") => {
+    if (!currentQ) return { primary: "", secondary: "" };
+    const en =
       currentQ.bilingual?.en?.options?.[key] ||
       (currentQ as any)[`option_${key.toLowerCase()}_en`] ||
+      "";
+    const hi =
       currentQ.bilingual?.hi?.options?.[key] ||
       (currentQ as any)[`option_${key.toLowerCase()}_hi`] ||
-      ""
-    );
+      "";
+
+    if (isHindiOnly) {
+      return { primary: hi || en, secondary: "" };
+    }
+    if (isEnglishOnly) {
+      return { primary: en || hi, secondary: "" };
+    }
+    // Bilingual mode: primary English, secondary Hindi (if different)
+    return {
+      primary: en || hi,
+      secondary: hi && hi !== en ? hi : "",
+    };
   };
 
-  const options: Array<{ key: "A" | "B" | "C" | "D"; text: string }> = currentQ
+  const options = currentQ
     ? (["A", "B", "C", "D"] as const)
-        .map((k) => ({ key: k, text: getOptionText(k) }))
-        .filter((opt) => Boolean(opt.text && opt.text.trim().length > 0))
+        .map((k) => ({ key: k, ...getOption(k) }))
+        .filter((opt) => Boolean(opt.primary && opt.primary.trim().length > 0))
     : [];
-
-  const questionText = currentQ
-    ? isHindi
-      ? currentQ.bilingual?.hi?.question ||
-        currentQ.question_hi ||
-        currentQ.bilingual?.en?.question ||
-        currentQ.question_en ||
-        ""
-      : currentQ.bilingual?.en?.question ||
-        currentQ.question_en ||
-        currentQ.bilingual?.hi?.question ||
-        currentQ.question_hi ||
-        ""
-    : "";
-
-  const secondaryQuestionText =
-    currentQ && isHindi
-      ? currentQ.bilingual?.en?.question || currentQ.question_en || ""
-      : null;
-
 
   return (
     <div className="min-h-[92vh] flex flex-col justify-between max-w-md mx-auto w-full px-4 pt-3 pb-6 relative">
-      <ConfettiEffects active={showParticles} count={24} />
+      <ConfettiEffects active={showParticles} streak={streak} />
 
-      {/* Top Header: Close, Progress Bar, Streak, Language Toggle */}
+      {/* Top Header: Close, Progress Bar, Streak, Language Selector */}
       <div className="space-y-3 shrink-0">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-2.5">
           {/* Close button */}
           <button
             onClick={() => setShowExitConfirm(true)}
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors"
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors"
             aria-label="Exit Quiz"
           >
             <X className="w-5 h-5" />
@@ -375,29 +396,66 @@ export function QuizPlayer({ quizId }: QuizPlayerProps) {
 
           {/* Streak Flame */}
           <div
-            className={`flex items-center gap-1 font-black text-xs px-2.5 py-1 rounded-full border transition-all ${
+            className={`flex items-center gap-1 font-black text-xs px-2 py-1 rounded-full border transition-all ${
               streak >= 2
                 ? "bg-orange-500/15 border-orange-500/40 text-orange-500 animate-flame"
                 : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500"
             }`}
           >
             <Flame
-              className={`w-4 h-4 ${streak >= 2 ? "fill-orange-500 text-orange-500" : ""}`}
+              className={`w-3.5 h-3.5 ${streak >= 2 ? "fill-orange-500 text-orange-500" : ""}`}
             />
             <span>{streak}</span>
           </div>
 
-          {/* Language Toggle (EN | HI) */}
-          <button
-            onClick={() => {
-              triggerHaptic("selection");
-              setLanguage((prev) => (prev === "en" ? "hi" : "en"));
-            }}
-            className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 active:scale-95 transition-all shrink-0"
-          >
-            <Globe2 className="w-3.5 h-3.5 text-primary-500" />
-            <span>{isHindi ? "हिंदी" : "EN"}</span>
-          </button>
+          {/* 3-way Language Selector (EN | HI | Both) */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl text-[11px] font-bold border border-slate-200 dark:border-slate-700 shrink-0">
+            <button
+              onClick={() => {
+                triggerHaptic("selection");
+                setLanguageMode("en");
+                setSavedLanguage("en");
+              }}
+              className={`px-1.5 py-0.5 rounded-lg transition-all ${
+                languageMode === "en"
+                  ? "bg-primary-600 text-white shadow-2xs"
+                  : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
+              title="English only"
+            >
+              EN
+            </button>
+            <button
+              onClick={() => {
+                triggerHaptic("selection");
+                setLanguageMode("hi");
+                setSavedLanguage("hi");
+              }}
+              className={`px-1.5 py-0.5 rounded-lg transition-all ${
+                languageMode === "hi"
+                  ? "bg-primary-600 text-white shadow-2xs"
+                  : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
+              title="हिंदी"
+            >
+              HI
+            </button>
+            <button
+              onClick={() => {
+                triggerHaptic("selection");
+                setLanguageMode("bilingual");
+                setSavedLanguage("bilingual");
+              }}
+              className={`px-1.5 py-0.5 rounded-lg transition-all ${
+                languageMode === "bilingual"
+                  ? "bg-primary-600 text-white shadow-2xs"
+                  : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
+              title="Bilingual / Both"
+            >
+              Both
+            </button>
+          </div>
 
           {/* Sound Toggle (Mute / Unmute) */}
           <button
@@ -419,7 +477,6 @@ export function QuizPlayer({ quizId }: QuizPlayerProps) {
           </button>
         </div>
 
-
         {/* Question Counter Pill */}
         <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 px-1">
           <span className="uppercase tracking-wider">
@@ -435,12 +492,14 @@ export function QuizPlayer({ quizId }: QuizPlayerProps) {
       <div className="my-auto py-4 space-y-4 animate-in fade-in slide-in-from-right-4 duration-300 key={currentQ.id}">
         <div className="bg-white dark:bg-[#121626] border-2 border-slate-200 dark:border-slate-800 border-b-4 rounded-3xl p-5 shadow-xs">
           <h2 className="text-base font-extrabold text-slate-900 dark:text-white leading-relaxed">
-            {questionText}
+            {primaryQuestionText}
           </h2>
-          {secondaryQuestionText && (
-            <p className="text-xs text-slate-400 font-medium mt-2 italic">
-              {secondaryQuestionText}
-            </p>
+          {bilingualSecondaryQuestionText && (
+            <div className="pt-2 mt-2 border-t border-dashed border-slate-200 dark:border-slate-800">
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-300 font-sans leading-relaxed">
+                {bilingualSecondaryQuestionText}
+              </p>
+            </div>
           )}
         </div>
 
@@ -494,7 +553,12 @@ export function QuizPlayer({ quizId }: QuizPlayerProps) {
                   {opt.key}
                 </div>
                 <div className="flex-1 text-xs font-bold leading-snug">
-                  {opt.text}
+                  <div>{opt.primary}</div>
+                  {opt.secondary && (
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium font-sans mt-0.5">
+                      {opt.secondary}
+                    </div>
+                  )}
                 </div>
                 {feedback && isSelected && feedback.isCorrect && (
                   <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 animate-pop" />
@@ -546,23 +610,34 @@ export function QuizPlayer({ quizId }: QuizPlayerProps) {
                       ? "Nicely done! 🎉"
                       : `Correct Answer: Option ${feedback.correctOption}`}
                   </h4>
-                  <p
-                    className={`text-xs mt-0.5 leading-relaxed font-medium ${
-                      feedback.isCorrect
-                        ? "text-emerald-800 dark:text-emerald-300"
-                        : "text-rose-800 dark:text-rose-300"
-                    }`}
-                  >
-                    {isHindi
-                      ? feedback.bilingual?.hi?.explanation ||
+                  {isBilingual ? (
+                    <div className="mt-0.5 space-y-0.5">
+                      {(feedback.bilingual?.en?.explanation || feedback.explanationEn) && (
+                        <p className="text-xs leading-relaxed font-medium text-slate-800 dark:text-slate-200">
+                          {feedback.bilingual?.en?.explanation || feedback.explanationEn}
+                        </p>
+                      )}
+                      {(feedback.bilingual?.hi?.explanation || feedback.explanationHi) && (
+                        <p className="text-xs leading-relaxed font-medium text-slate-700 dark:text-slate-300 font-sans">
+                          {feedback.bilingual?.hi?.explanation || feedback.explanationHi}
+                        </p>
+                      )}
+                    </div>
+                  ) : isHindiOnly ? (
+                    <p className="text-xs mt-0.5 leading-relaxed font-medium text-slate-800 dark:text-slate-200">
+                      {feedback.bilingual?.hi?.explanation ||
                         feedback.explanationHi ||
                         feedback.bilingual?.en?.explanation ||
-                        feedback.explanationEn
-                      : feedback.bilingual?.en?.explanation ||
+                        feedback.explanationEn}
+                    </p>
+                  ) : (
+                    <p className="text-xs mt-0.5 leading-relaxed font-medium text-slate-800 dark:text-slate-200">
+                      {feedback.bilingual?.en?.explanation ||
                         feedback.explanationEn ||
                         feedback.bilingual?.hi?.explanation ||
                         feedback.explanationHi}
-                  </p>
+                    </p>
+                  )}
                 </div>
               </div>
 

@@ -8,14 +8,17 @@ export function Header({
   title,
   showStreak = true,
   streak = 1,
+  points,
   xp,
 }: {
   title?: string;
   showStreak?: boolean;
   streak?: number;
+  points?: number;
   xp?: number;
 }) {
   const { session, isDevPreview, triggerHaptic } = useTelegram();
+  const displayPoints = points ?? xp;
 
   return (
     <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#090b14]/95 backdrop-blur-md border-b-2 border-slate-200/80 dark:border-slate-800/80 px-4 py-2.5 shadow-2xs">
@@ -44,7 +47,7 @@ export function Header({
           </div>
         </Link>
 
-        {/* Game Stats Status Bar (Streak, XP, Profile) */}
+        {/* Game Stats Status Bar (Streak, Points, Profile) */}
         <div className="flex items-center gap-1.5">
           {isDevPreview && (
             <span className="hidden sm:inline-block text-[9px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 px-2 py-0.5 rounded-full font-bold">
@@ -52,11 +55,14 @@ export function Header({
             </span>
           )}
 
-          {/* XP Pill */}
-          {xp !== undefined && (
-            <div className="flex items-center gap-1 bg-amber-400/15 border border-amber-400/30 text-amber-600 dark:text-amber-400 px-2 py-1 rounded-full text-xs font-black shadow-2xs">
+          {/* Points Pill */}
+          {displayPoints !== undefined && (
+            <div
+              className="flex items-center gap-1 bg-amber-400/15 border border-amber-400/30 text-amber-600 dark:text-amber-400 px-2 py-1 rounded-full text-xs font-black shadow-2xs"
+              title={`${displayPoints} Points`}
+            >
               <Star className="w-3.5 h-3.5 fill-current text-amber-500" />
-              <span>{xp}</span>
+              <span>{displayPoints} pts</span>
             </div>
           )}
 

@@ -44,16 +44,18 @@ export function StreakFlame({
 }
 
 /**
- * XP & Level Badge
+ * Points & Level Badge (Replaces XP)
  */
-export function XpPill({
+export function PointsPill({
+  points,
   xp,
   level,
-  variant = "xp",
+  variant = "points",
 }: {
+  points?: number;
   xp?: number;
   level?: number;
-  variant?: "xp" | "level";
+  variant?: "points" | "xp" | "level";
 }) {
   if (variant === "level") {
     return (
@@ -64,13 +66,18 @@ export function XpPill({
     );
   }
 
+  const displayPoints = points ?? xp ?? 0;
+
   return (
     <div className="inline-flex items-center gap-1 bg-amber-400/20 border border-amber-400/40 text-amber-700 dark:text-amber-300 px-2.5 py-0.5 rounded-full text-xs font-black shadow-2xs">
       <Star className="w-3.5 h-3.5 fill-current text-amber-500" />
-      <span>{xp ?? 0} XP</span>
+      <span>{displayPoints} pts</span>
     </div>
   );
 }
+
+// Backward-compatibility alias
+export const XpPill = PointsPill;
 
 /**
  * Duolingo-Style Progress Bar with Shimmer
@@ -170,13 +177,26 @@ export function LeagueBadge({ rank }: { rank: number }) {
 }
 
 /**
- * Helper to compute player level from solved questions and accuracy
+ * Helper to compute player level from points (or tests/questions)
  */
-export function getPlayerLevel(testsTaken: number, totalQuestions: number, avgAccuracy: number) {
-  const points = testsTaken * 10 + Math.floor(totalQuestions * 0.5) + avgAccuracy;
-  if (points >= 500) return { level: 5, title: "CCC Grandmaster 👑", nextThreshold: 1000, xp: points };
-  if (points >= 300) return { level: 4, title: "CCC Scholar ⚡", nextThreshold: 500, xp: points };
-  if (points >= 150) return { level: 3, title: "CCC Specialist 🛡️", nextThreshold: 300, xp: points };
-  if (points >= 50) return { level: 2, title: "CCC Apprentice 🚀", nextThreshold: 150, xp: points };
-  return { level: 1, title: "CCC Cadet 🎯", nextThreshold: 50, xp: points };
+export function getPlayerLevel(
+  pointsOrTests: number = 0,
+  totalQuestions: number = 0,
+  avgAccuracy: number = 0
+) {
+  let points = pointsOrTests;
+  // If legacy 3-parameter call was made and pointsOrTests is small relative to questions
+  if (totalQuestions > 0 && pointsOrTests < totalQuestions) {
+    points = pointsOrTests * 10 + Math.floor(totalQuestions * 0.5) + avgAccuracy;
+  }
+
+  if (points >= 500)
+    return { level: 5, title: "CCC Grandmaster 👑", nextThreshold: 1000, points, xp: points };
+  if (points >= 300)
+    return { level: 4, title: "CCC Scholar ⚡", nextThreshold: 500, points, xp: points };
+  if (points >= 150)
+    return { level: 3, title: "CCC Specialist 🛡️", nextThreshold: 300, points, xp: points };
+  if (points >= 50)
+    return { level: 2, title: "CCC Apprentice 🚀", nextThreshold: 150, points, xp: points };
+  return { level: 1, title: "CCC Cadet 🎯", nextThreshold: 50, points, xp: points };
 }

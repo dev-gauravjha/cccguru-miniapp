@@ -81,21 +81,21 @@ export default function TestsPage() {
       case "easy":
         return {
           label: "Easy",
-          xp: "+75 XP",
+          points: "+75 pts",
           badgeClass:
             "text-emerald-700 bg-emerald-50 dark:text-emerald-300 dark:bg-emerald-950/80 border-emerald-300 dark:border-emerald-700",
         };
       case "hard":
         return {
           label: "Hard",
-          xp: "+150 XP",
+          points: "+150 pts",
           badgeClass:
             "text-rose-700 bg-rose-50 dark:text-rose-300 dark:bg-rose-950/80 border-rose-300 dark:border-rose-700",
         };
       default:
         return {
           label: "Medium",
-          xp: "+100 XP",
+          points: "+100 pts",
           badgeClass:
             "text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/80 border-amber-300 dark:border-amber-700",
         };
@@ -128,7 +128,7 @@ export default function TestsPage() {
             </h2>
 
             <p className="text-xs text-indigo-100 max-w-[320px]">
-              Full-length timed exams with authentic NIELIT marking. Solve questions, earn XP, and climb the national leaderboard.
+              Full-length timed exams with authentic NIELIT marking. Solve questions, earn points, and climb the national leaderboard.
             </p>
           </div>
 
@@ -268,7 +268,7 @@ export default function TestsPage() {
 
                     <span className="text-[10px] font-black bg-amber-400/20 text-amber-700 dark:text-amber-300 border border-amber-400/30 px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1">
                       <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
-                      {diff.xp}
+                      {diff.points}
                     </span>
                   </div>
 

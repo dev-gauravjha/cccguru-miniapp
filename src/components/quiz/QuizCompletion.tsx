@@ -14,6 +14,7 @@ import {
   Zap,
 } from "lucide-react";
 import { ConfettiEffects } from "@/components/quiz/ConfettiEffects";
+import { fireVictoryCelebration } from "@/lib/confetti";
 import { useTelegram } from "@/components/providers/TelegramProvider";
 import { playFinishSound } from "@/lib/quiz-sounds";
 
@@ -46,6 +47,7 @@ export function QuizCompletion({
       triggerHaptic("success");
       playFinishSound();
       setShowConfetti(true);
+      fireVictoryCelebration();
     }
   }, [isPassed, triggerHaptic]);
 
@@ -54,7 +56,7 @@ export function QuizCompletion({
 
   return (
     <div className="min-h-[85vh] flex flex-col justify-between py-6 px-4 animate-in fade-in duration-300">
-      <ConfettiEffects active={showConfetti} count={35} />
+      <ConfettiEffects active={showConfetti} variant="victory" />
 
       {/* Top Victory Celebration */}
       <div className="text-center space-y-4 pt-2">

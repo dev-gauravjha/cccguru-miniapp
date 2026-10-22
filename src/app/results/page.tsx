@@ -132,7 +132,7 @@ export default function ResultsHistoryPage() {
                 No Tests Attempted Yet
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xs mx-auto leading-relaxed">
-                Take authentic CCC mock tests to earn XP, track your grade, and unlock your position on the national scoreboard!
+                Take authentic CCC mock tests to earn points, track your grade, and unlock your position on the national scoreboard!
               </p>
             </div>
             <Link
