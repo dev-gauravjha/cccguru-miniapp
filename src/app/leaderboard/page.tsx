@@ -6,7 +6,7 @@ import { Trophy, Sparkles, Shield, Flame } from "lucide-react";
 export const metadata: Metadata = {
   title: "Leaderboard | CCCGuru NIELIT Exam Preparation",
   description:
-    "Official CCCGuru Daily, Monthly, and All-Time Leaderboard. Learn and excel with students across India preparing for NIELIT CCC exam.",
+    "CCCGuru Daily, Monthly, and All-Time Leaderboard. Learn and excel with students across India preparing for NIELIT CCC exam.",
 };
 
 export default function LeaderboardPage() {

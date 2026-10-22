@@ -42,6 +42,10 @@ import {
 import { getSavedLanguage, setSavedLanguage, LanguageMode } from "@/lib/language";
 import { getPlayerBadges } from "@/lib/badges";
 
+// Feature flag: Cross-Platform Sync card is hidden until companion apps are ready.
+// Set to true to re-enable the card and account linking modal in the future.
+const SHOW_CROSS_PLATFORM_SYNC = false;
+
 export default function ProfilePage() {
   const { user, session, isDevPreview, logout, triggerHaptic } = useTelegram();
   const [themeMode, setThemeMode] = useState<"light" | "dark">("light");
@@ -345,7 +349,7 @@ export default function ProfilePage() {
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-                Check scorecards, accuracy & official answer keys
+                Check scorecards, accuracy & answer keys
               </p>
             </div>
           </div>
@@ -448,65 +452,67 @@ export default function ProfilePage() {
             <h3 className="text-sm font-black">CCC Master Learner Pass</h3>
           </div>
           <p className="text-[11px] text-emerald-100 leading-relaxed">
-            Unlimited access to all 9 chapter tests, full mock series, and official answer keys.
+            Unlimited access to all 9 chapter tests, full mock series, and answer keys.
           </p>
         </div>
 
-        {/* CCCGuru Cross-Platform Account Sync */}
-        <div className="game-card p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-purple-100 dark:bg-purple-950/70 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 border border-purple-200 dark:border-purple-800">
-                <Link2 className="w-4 h-4" />
+        {/* CCCGuru Cross-Platform Account Sync - Hidden until ready for launch */}
+        {SHOW_CROSS_PLATFORM_SYNC && (
+          <div className="game-card p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-purple-100 dark:bg-purple-950/70 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 border border-purple-200 dark:border-purple-800">
+                  <Link2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-black text-slate-900 dark:text-white">
+                    Cross-Platform Sync
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-medium">
+                    Sync with CCCGuru.in & Android App
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-xs font-black text-slate-900 dark:text-white">
-                  Cross-Platform Sync
-                </h3>
-                <p className="text-[10px] text-slate-400 font-medium">
-                  Sync with CCCGuru.in & Android App
-                </p>
-              </div>
+
+              {linkedEmail ? (
+                <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/60">
+                  <Check className="w-3 h-3" />
+                  Linked
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+                  Not Linked
+                </span>
+              )}
             </div>
 
-            {linkedEmail ? (
-              <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/60">
-                <Check className="w-3 h-3" />
-                Linked
-              </span>
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              {linkedEmail
+                ? `Linked to ${linkedEmail}. Your leaderboard scores and attempts are synced.`
+                : "Link your CCCGuru website email to maintain one canonical identity across Telegram and the website."}
+            </p>
+
+            {!linkedEmail ? (
+              <button
+                onClick={() => {
+                  triggerHaptic("selection");
+                  setLinkError(null);
+                  setLinkSuccess(null);
+                  setIsLinkModalOpen(true);
+                }}
+                className="btn-3d-primary w-full py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+              >
+                <Link2 className="w-4 h-4" />
+                <span>Link CCCGuru Account</span>
+              </button>
             ) : (
-              <span className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
-                Not Linked
-              </span>
+              <div className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-1 font-semibold">
+                <Shield className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Unified Canonical User ID active</span>
+              </div>
             )}
           </div>
-
-          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-            {linkedEmail
-              ? `Linked to ${linkedEmail}. Your leaderboard scores and attempts are synced.`
-              : "Link your CCCGuru website email to maintain one canonical identity across Telegram and the website."}
-          </p>
-
-          {!linkedEmail ? (
-            <button
-              onClick={() => {
-                triggerHaptic("selection");
-                setLinkError(null);
-                setLinkSuccess(null);
-                setIsLinkModalOpen(true);
-              }}
-              className="btn-3d-primary w-full py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-xs cursor-pointer"
-            >
-              <Link2 className="w-4 h-4" />
-              <span>Link CCCGuru Account</span>
-            </button>
-          ) : (
-            <div className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-1 font-semibold">
-              <Shield className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Unified Canonical User ID active</span>
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Preferences and External Links */}
         <div className="game-card p-2 divide-y divide-slate-100 dark:divide-slate-800">
@@ -709,12 +715,12 @@ export default function ProfilePage() {
 
         {/* Version info */}
         <p className="text-center text-[10px] text-slate-400 font-semibold">
-          CCCGuru Mini App v1.0.0 • Connected to Supabase Production
+          CCCGuru Mini App v1.0.0 • CCC Prep Edition
         </p>
       </div>
 
-      {/* Account Linking Modal */}
-      {isLinkModalOpen && (
+      {/* Account Linking Modal - Hidden until ready for launch */}
+      {SHOW_CROSS_PLATFORM_SYNC && isLinkModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white dark:bg-[#121626] border-2 border-slate-300 dark:border-slate-800 border-b-[6px] border-b-slate-400 dark:border-b-slate-900 rounded-3xl p-6 w-full max-w-sm shadow-2xl space-y-4">
             <div className="flex items-center justify-between">

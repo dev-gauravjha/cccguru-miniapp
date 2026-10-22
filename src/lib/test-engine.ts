@@ -4,6 +4,7 @@ import type {
   TestCategory,
   TestSeries,
   TestSeriesItem,
+  LatestAttemptSummary,
   Chapter,
   Question,
   SanitizedQuestion,
@@ -67,11 +68,104 @@ export async function getTestSeries(options?: {
 }
 
 /**
- * Fetch test series items for a specific series or all published items
+ * Fetch student's latest evaluated attempts mapped by test_item_id
+ * Guarantees a single latest summary per test item
+ */
+export async function getStudentLatestAttemptsMap(
+  studentId?: string,
+  canonicalUserId?: string
+): Promise<Map<string, LatestAttemptSummary>> {
+  const map = new Map<string, LatestAttemptSummary>();
+  if (!studentId && !canonicalUserId) return map;
+
+  const supabase = getSupabaseAdminClient();
+  try {
+    let query = supabase
+      .from("student_test_attempts")
+      .select(
+        "id, test_item_id, status, score, total_marks, accuracy, attempted_count, correct_count, incorrect_count, unanswered_count, time_taken_seconds, submitted_at, updated_at"
+      )
+      .eq("status", "evaluated");
+
+    if (studentId && canonicalUserId) {
+      query = query.or(
+        `student_id.eq.${studentId},canonical_user_id.eq.${canonicalUserId}`
+      );
+    } else if (studentId) {
+      query = query.eq("student_id", studentId);
+    } else if (canonicalUserId) {
+      query = query.eq("canonical_user_id", canonicalUserId);
+    }
+
+    const { data, error } = await query.order("submitted_at", {
+      ascending: false,
+    });
+    if (!error && data) {
+      for (const row of data) {
+        if (!map.has(row.test_item_id)) {
+          const score = Number(row.score || 0);
+          const totalMarks = Number(row.total_marks || 100);
+          map.set(row.test_item_id, {
+            id: row.id,
+            status: row.status,
+            score,
+            totalMarks,
+            accuracy: Math.round(Number(row.accuracy || 0)),
+            attemptedCount: Number(row.attempted_count || 0),
+            correctCount: Number(row.correct_count || 0),
+            incorrectCount: Number(row.incorrect_count || 0),
+            unansweredCount: Number(row.unanswered_count || 0),
+            timeTakenSeconds: Number(row.time_taken_seconds || 0),
+            isPassed: score >= totalMarks * 0.5,
+            submittedAt: row.submitted_at || row.updated_at,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Error in getStudentLatestAttemptsMap:", err);
+  }
+
+  // Memory fallback
+  for (const attempt of memoryAttempts.values()) {
+    if (
+      attempt.status === "evaluated" &&
+      (attempt.student_id === studentId ||
+        (canonicalUserId && attempt.canonical_user_id === canonicalUserId))
+    ) {
+      if (!map.has(attempt.test_item_id)) {
+        const score = Number(attempt.score || 0);
+        const totalMarks = Number(attempt.total_marks || 100);
+        map.set(attempt.test_item_id, {
+          id: attempt.id,
+          status: attempt.status,
+          score,
+          totalMarks,
+          accuracy: Math.round(Number(attempt.accuracy || 0)),
+          attemptedCount: Number(attempt.attempted_count || 0),
+          correctCount: Number(attempt.correct_count || 0),
+          incorrectCount: Number(attempt.incorrect_count || 0),
+          unansweredCount: Number(attempt.unanswered_count || 0),
+          timeTakenSeconds: Number(attempt.time_taken_seconds || 0),
+          isPassed: score >= totalMarks * 0.5,
+          submittedAt: attempt.submitted_at || attempt.updated_at,
+        });
+      }
+    }
+  }
+
+  return map;
+}
+
+/**
+ * Fetch test series items for a specific series or all published items,
+ * optionally enriched with the student's latest attempt.
  */
 export async function getTestSeriesItems(
   seriesId?: string,
-  categoryId?: string
+  categoryId?: string,
+  studentId?: string,
+  canonicalUserId?: string
 ): Promise<TestSeriesItem[]> {
   const supabase = getSupabaseAdminClient();
   let query = supabase
@@ -90,13 +184,25 @@ export async function getTestSeriesItems(
     return [];
   }
 
+  let filtered = data ?? [];
   if (categoryId) {
-    return (data ?? []).filter(
+    filtered = filtered.filter(
       (item: any) => item.test_series?.category_id === categoryId
     );
   }
 
-  return data ?? [];
+  if (studentId || canonicalUserId) {
+    const attemptsMap = await getStudentLatestAttemptsMap(
+      studentId,
+      canonicalUserId
+    );
+    return filtered.map((item: any) => ({
+      ...item,
+      latestAttempt: attemptsMap.get(item.id) || null,
+    }));
+  }
+
+  return filtered;
 }
 
 /**
@@ -305,8 +411,63 @@ export async function startTestAttempt(params: {
   }
 
   const sanitized = rawQuestions.map(sanitizeQuestion);
-  const attemptId = crypto.randomUUID();
   const now = new Date().toISOString();
+  const supabase = getSupabaseAdminClient();
+
+  // Check if an attempt already exists for this student and test item to avoid duplicate history!
+  let existingAttemptId: string | null = null;
+  let existingCreatedAt: string | null = null;
+
+  try {
+    let query = supabase
+      .from("student_test_attempts")
+      .select("id, created_at")
+      .eq("test_item_id", item.id);
+
+    if (params.studentId && params.canonicalUserId) {
+      query = query.or(
+        `student_id.eq.${params.studentId},canonical_user_id.eq.${params.canonicalUserId}`
+      );
+    } else if (params.studentId) {
+      query = query.eq("student_id", params.studentId);
+    } else if (params.canonicalUserId) {
+      query = query.eq("canonical_user_id", params.canonicalUserId);
+    }
+
+    const { data: existingAttempts } = await query.order("updated_at", {
+      ascending: false,
+    });
+    if (existingAttempts && existingAttempts.length > 0) {
+      existingAttemptId = existingAttempts[0].id;
+      existingCreatedAt = existingAttempts[0].created_at;
+
+      // Clean up legacy duplicate rows if multiple existed previously
+      if (existingAttempts.length > 1) {
+        const extraIds = existingAttempts.slice(1).map((a: any) => a.id);
+        await supabase.from("student_test_attempts").delete().in("id", extraIds);
+      }
+    }
+  } catch (err) {
+    console.warn("Could not check existing attempt:", err);
+  }
+
+  // Memory fallback check if not found in DB
+  if (!existingAttemptId) {
+    for (const att of memoryAttempts.values()) {
+      if (
+        att.test_item_id === item.id &&
+        (att.student_id === params.studentId ||
+          (params.canonicalUserId &&
+            att.canonical_user_id === params.canonicalUserId))
+      ) {
+        existingAttemptId = att.id;
+        existingCreatedAt = att.created_at;
+        break;
+      }
+    }
+  }
+
+  const attemptId = existingAttemptId || crypto.randomUUID();
 
   const attemptRecord: StudentTestAttempt = {
     id: attemptId,
@@ -330,35 +491,76 @@ export async function startTestAttempt(params: {
     total_marks: item.total_marks || sanitized.length,
     accuracy: 0,
     negative_marking_applied: 0,
-    created_at: now,
+    created_at: existingCreatedAt || now,
     updated_at: now,
     test_item: item,
   };
 
-  // Persist attempt to Supabase student_test_attempts table (lean 1-row insert)
-  const supabase = getSupabaseAdminClient();
+  // Persist attempt: UPDATE existing single row or INSERT new single row
   try {
-    await (supabase as any).from("student_test_attempts").insert({
-      id: attemptId,
-      student_id: params.studentId,
+    const updatePayload: any = {
       canonical_user_id: params.canonicalUserId || null,
       student_type: params.studentType || "telegram",
       student_name: params.studentName || null,
       student_username: params.studentUsername || null,
-      test_item_id: item.id,
-      series_id: item.series_id || null,
       status: "in_progress",
       started_at: now,
+      submitted_at: null,
       duration_allowed_minutes: item.duration || 90,
+      time_taken_seconds: 0,
       total_questions: sanitized.length,
+      attempted_count: 0,
+      correct_count: 0,
+      incorrect_count: 0,
+      unanswered_count: sanitized.length,
       score: 0,
       total_marks: item.total_marks || sanitized.length,
-    });
+      accuracy: 0,
+      negative_marking_applied: 0,
+      updated_at: now,
+    };
+
+    let opErr: any;
+    if (existingAttemptId) {
+      const res = await (supabase as any)
+        .from("student_test_attempts")
+        .update(updatePayload)
+        .eq("id", existingAttemptId);
+      opErr = res.error;
+    } else {
+      const insertPayload = {
+        id: attemptId,
+        student_id: params.studentId,
+        test_item_id: item.id,
+        series_id: item.series_id || null,
+        ...updatePayload,
+      };
+      const res = await (supabase as any).from("student_test_attempts").insert(insertPayload);
+      opErr = res.error;
+    }
+
+    if (opErr && (opErr as any).code === "23503") {
+      updatePayload.canonical_user_id = null;
+      if (existingAttemptId) {
+        await (supabase as any)
+          .from("student_test_attempts")
+          .update(updatePayload)
+          .eq("id", existingAttemptId);
+      } else {
+        await (supabase as any).from("student_test_attempts").insert({
+          id: attemptId,
+          student_id: params.studentId,
+          test_item_id: item.id,
+          series_id: item.series_id || null,
+          ...updatePayload,
+        });
+      }
+    }
   } catch (err) {
     // If table doesn't exist yet, gracefully fall back to memory
   }
 
-  // Keep in memory cache for low-latency lookups
+  // Reset in memory cache for low-latency lookups
   memoryAttempts.set(attemptId, attemptRecord);
   memoryAnswers.set(attemptId, new Map());
 
@@ -635,15 +837,20 @@ export async function submitTestAttempt(params: {
 
     // Award leaderboard points (+1 per correct answer) ONLY IF student passed (score >= 50%)
     if (params.canonicalUserId && pointsToAward > 0) {
-      const { error: lbErr } = await (supabase as any).from("leaderboard_point_events").insert({
-        canonical_user_id: params.canonicalUserId,
-        attempt_id: params.attemptId,
-        test_item_id: item.id,
-        points_awarded: pointsToAward,
-        correct_count: correctCount,
-        total_questions: rawQuestions.length,
-        created_at: submittedAt,
-      });
+      const { error: lbErr } = await (supabase as any)
+        .from("leaderboard_point_events")
+        .upsert(
+          {
+            canonical_user_id: params.canonicalUserId,
+            attempt_id: params.attemptId,
+            test_item_id: item.id,
+            points_awarded: pointsToAward,
+            correct_count: correctCount,
+            total_questions: rawQuestions.length,
+            created_at: submittedAt,
+          },
+          { onConflict: "attempt_id" }
+        );
 
       if (lbErr) {
         console.error("[TestEngine] Error recording leaderboard point event:", lbErr);
@@ -666,40 +873,68 @@ export async function submitTestAttempt(params: {
 }
 
 /**
- * Fetch all completed results for a student
+ * Fetch all completed results for a student, deduplicated by test_item_id
+ * so each test item only appears once with its latest updated result.
  */
 export async function getStudentResults(
-  studentId: string
+  studentId: string,
+  canonicalUserId?: string
 ): Promise<StudentTestAttempt[]> {
   const supabase = getSupabaseAdminClient();
+  let rawList: StudentTestAttempt[] = [];
+
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from("student_test_attempts")
       .select("*, test_item:test_series_items(id, title, duration, total_marks)")
-      .eq("student_id", studentId)
-      .eq("status", "evaluated")
-      .order("submitted_at", { ascending: false });
+      .eq("status", "evaluated");
+
+    if (studentId && canonicalUserId) {
+      query = query.or(
+        `student_id.eq.${studentId},canonical_user_id.eq.${canonicalUserId}`
+      );
+    } else if (studentId) {
+      query = query.eq("student_id", studentId);
+    } else if (canonicalUserId) {
+      query = query.eq("canonical_user_id", canonicalUserId);
+    }
+
+    const { data, error } = await query.order("submitted_at", { ascending: false });
 
     if (!error && data && data.length > 0) {
-      return data as StudentTestAttempt[];
+      rawList = data as StudentTestAttempt[];
     }
   } catch {
     // Fallback
   }
 
   // Memory fallback
-  const results: StudentTestAttempt[] = [];
-  for (const attempt of memoryAttempts.values()) {
-    if (attempt.student_id === studentId && attempt.status === "evaluated") {
-      results.push(attempt);
+  if (rawList.length === 0) {
+    for (const attempt of memoryAttempts.values()) {
+      if (
+        attempt.status === "evaluated" &&
+        (attempt.student_id === studentId ||
+          (canonicalUserId && attempt.canonical_user_id === canonicalUserId))
+      ) {
+        rawList.push(attempt);
+      }
+    }
+    rawList.sort(
+      (a, b) =>
+        new Date(b.submitted_at || b.created_at).getTime() -
+        new Date(a.submitted_at || a.created_at).getTime()
+    );
+  }
+
+  // Deduplicate by test_item_id: exactly 1 card per test item showing latest result
+  const uniqueByItem = new Map<string, StudentTestAttempt>();
+  for (const att of rawList) {
+    if (!uniqueByItem.has(att.test_item_id)) {
+      uniqueByItem.set(att.test_item_id, att);
     }
   }
 
-  return results.sort(
-    (a, b) =>
-      new Date(b.submitted_at || b.created_at).getTime() -
-      new Date(a.submitted_at || a.created_at).getTime()
-  );
+  return Array.from(uniqueByItem.values());
 }
 
 /**

@@ -13,6 +13,7 @@ import {
   AlertCircle,
   Play,
   TrendingUp,
+  RotateCcw,
 } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { useTelegram } from "@/components/providers/TelegramProvider";
@@ -20,16 +21,26 @@ import { formatDate, formatTimer } from "@/lib/utils";
 import type { StudentTestAttempt } from "@/types/database";
 
 export default function ResultsHistoryPage() {
-  const { triggerHaptic } = useTelegram();
+  const { triggerHaptic, user, session } = useTelegram();
   const [results, setResults] = useState<StudentTestAttempt[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const studentId = session?.studentId || (user?.id ? `tg_${user.id}` : "");
+  const canonicalUserId = session?.canonicalUserId || "";
 
   const fetchResults = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/mini-app/results");
+      const params = new URLSearchParams();
+      if (studentId) params.set("studentId", studentId);
+      if (canonicalUserId) params.set("canonicalUserId", canonicalUserId);
+      const url = params.toString()
+        ? `/api/mini-app/results?${params.toString()}`
+        : "/api/mini-app/results";
+
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to load test history");
       const json = await res.json();
       setResults(json.results || []);
@@ -38,7 +49,7 @@ export default function ResultsHistoryPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [studentId, canonicalUserId]);
 
   useEffect(() => {
     fetchResults();
@@ -153,11 +164,9 @@ export default function ResultsHistoryPage() {
               const isPassed = r.score >= (r.total_marks || 100) * 0.5;
 
               return (
-                <Link
+                <div
                   key={r.id}
-                  href={`/results/${r.id}`}
-                  onClick={() => triggerHaptic("light")}
-                  className="game-card p-4 block space-y-3 transition-transform hover:-translate-y-0.5"
+                  className="game-card p-4 space-y-3"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -202,11 +211,26 @@ export default function ResultsHistoryPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-xs font-black text-primary-600 dark:text-primary-400 pt-0.5">
-                    <span>Review Explanations & Key</span>
-                    <ChevronRight className="w-4 h-4" />
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800">
+                    <Link
+                      href={`/results/${r.id}`}
+                      onClick={() => triggerHaptic("light")}
+                      className="text-xs font-black text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1"
+                    >
+                      <span>Review Solutions</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </Link>
+
+                    <Link
+                      href={`/exam/${r.test_item_id}`}
+                      onClick={() => triggerHaptic("medium")}
+                      className="btn-3d-amber px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-xs"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Reattempt</span>
+                    </Link>
                   </div>
-                </Link>
+                </div>
               );
             })}
           </div>

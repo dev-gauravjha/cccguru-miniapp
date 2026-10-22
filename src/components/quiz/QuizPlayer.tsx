@@ -18,16 +18,21 @@ import {
 } from "lucide-react";
 import { useTelegram } from "@/components/providers/TelegramProvider";
 import { ConfettiEffects } from "@/components/quiz/ConfettiEffects";
-import { fireCorrectAnswerConfetti } from "@/lib/confetti";
+import { fireCorrectAnswerConfetti, fireStreakMilestoneConfetti } from "@/lib/confetti";
 import { QuizCompletion } from "@/components/quiz/QuizCompletion";
 import type { SanitizedQuizQuestion } from "@/lib/quiz-engine";
 import {
   playCorrectSound,
   playWrongSound,
   playFinishSound,
+  playStreakMilestoneSound,
   isSoundEnabled,
   setSoundEnabled,
 } from "@/lib/quiz-sounds";
+import {
+  StreakMilestoneOverlay,
+  ProgressiveStreakBanner,
+} from "@/components/quiz/QuizStreakCelebration";
 import {
   getSavedLanguage,
   setSavedLanguage,
@@ -87,6 +92,8 @@ export function QuizPlayer({ quizId }: QuizPlayerProps) {
 
   const [streak, setStreak] = useState(0);
   const [score, setScore] = useState(0);
+  const [activeMilestone, setActiveMilestone] = useState<number | null>(null);
+  const celebratedMilestonesRef = useRef<Set<number>>(new Set());
   const [showParticles, setShowParticles] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
@@ -106,6 +113,8 @@ export function QuizPlayer({ quizId }: QuizPlayerProps) {
     setCurrentIndex(0);
     setScore(0);
     setStreak(0);
+    setActiveMilestone(null);
+    celebratedMilestonesRef.current.clear();
     setIsCompleted(false);
 
     try {
@@ -124,7 +133,7 @@ export function QuizPlayer({ quizId }: QuizPlayerProps) {
 
       if (data.empty || !data.questions || data.questions.length === 0) {
         setIsEmpty(true);
-        setEmptyMessage(data.message || "No questions available for this quiz in the database.");
+        setEmptyMessage(data.message || "No questions available for this quiz yet.");
         setTitle(data.title || "CCC Quiz");
         return;
       }
@@ -180,18 +189,39 @@ export function QuizPlayer({ quizId }: QuizPlayerProps) {
         pointsEarned: data.pointsEarned || 0,
       });
 
-      setStreak(data.streak || 0);
+      const newStreak =
+        data.streak !== undefined
+          ? data.streak
+          : data.isCorrect
+          ? streak + 1
+          : 0;
+
+      setStreak(newStreak);
       setScore(data.currentScore || (data.isCorrect ? score + 1 : score));
 
       if (data.isCorrect) {
         triggerHaptic("success");
-        playCorrectSound(data.streak || 0);
-        fireCorrectAnswerConfetti({ streak: data.streak || 0 });
+        playCorrectSound(newStreak);
+        fireCorrectAnswerConfetti({ streak: newStreak });
         setShowParticles(true);
         setTimeout(() => setShowParticles(false), 1200);
+
+        // Milestone Celebrations: exactly at 5, 10, 15... (fires only once per milestone)
+        if (
+          newStreak >= 5 &&
+          newStreak % 5 === 0 &&
+          !celebratedMilestonesRef.current.has(newStreak)
+        ) {
+          celebratedMilestonesRef.current.add(newStreak);
+          setActiveMilestone(newStreak);
+          playStreakMilestoneSound(newStreak);
+          fireStreakMilestoneConfetti(newStreak);
+        }
       } else {
         triggerHaptic("warning");
         playWrongSound();
+        // Clear celebrated milestones so the next streak can celebrate 5 and 10 again!
+        celebratedMilestonesRef.current.clear();
       }
     } catch {
       // In case of network error, unlock so user can retry
@@ -263,7 +293,7 @@ export function QuizPlayer({ quizId }: QuizPlayerProps) {
             No Questions Available
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            {emptyMessage || "There are currently no questions linked to this quiz in the database. Please check back later."}
+            {emptyMessage || "There are currently no questions linked to this quiz yet. Please check back later."}
           </p>
         </div>
         <button
@@ -374,6 +404,13 @@ export function QuizPlayer({ quizId }: QuizPlayerProps) {
     <div className="min-h-[92vh] flex flex-col justify-between max-w-md mx-auto w-full px-4 pt-3 pb-6 relative">
       <ConfettiEffects active={showParticles} streak={streak} />
 
+      {/* Duolingo Mascot Slide-up Milestone Celebration Overlay */}
+      <StreakMilestoneOverlay
+        milestone={activeMilestone}
+        languageMode={languageMode}
+        onDismiss={() => setActiveMilestone(null)}
+      />
+
       {/* Top Header: Close, Progress Bar, Streak, Language Selector */}
       <div className="space-y-3 shrink-0">
         <div className="flex items-center justify-between gap-2.5">
@@ -396,14 +433,24 @@ export function QuizPlayer({ quizId }: QuizPlayerProps) {
 
           {/* Streak Flame */}
           <div
-            className={`flex items-center gap-1 font-black text-xs px-2 py-1 rounded-full border transition-all ${
-              streak >= 2
+            className={`flex items-center gap-1 font-black text-xs px-2.5 py-1 rounded-full border transition-all ${
+              streak >= 10
+                ? "bg-amber-400/20 border-amber-400/60 text-amber-500 ring-2 ring-amber-400/40 animate-crown"
+                : streak >= 5
+                ? "bg-orange-500/20 border-orange-500/60 text-orange-500 animate-flame ring-1 ring-orange-500/40"
+                : streak >= 2
                 ? "bg-orange-500/15 border-orange-500/40 text-orange-500 animate-flame"
                 : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500"
             }`}
           >
             <Flame
-              className={`w-3.5 h-3.5 ${streak >= 2 ? "fill-orange-500 text-orange-500" : ""}`}
+              className={`w-3.5 h-3.5 ${
+                streak >= 10
+                  ? "fill-amber-500 text-amber-500"
+                  : streak >= 2
+                  ? "fill-orange-500 text-orange-500"
+                  : ""
+              }`}
             />
             <span>{streak}</span>
           </div>
@@ -491,12 +538,18 @@ export function QuizPlayer({ quizId }: QuizPlayerProps) {
       {/* Center: Question Prompt */}
       <div className="my-auto py-4 space-y-4 animate-in fade-in slide-in-from-right-4 duration-300 key={currentQ.id}">
         <div className="bg-white dark:bg-[#121626] border-2 border-slate-200 dark:border-slate-800 border-b-4 rounded-3xl p-5 shadow-xs">
-          <h2 className="text-base font-extrabold text-slate-900 dark:text-white leading-relaxed">
+          <h2
+            className={`font-extrabold text-slate-900 dark:text-white leading-relaxed ${
+              isHindiOnly
+                ? "text-lg sm:text-xl font-sans"
+                : "text-base sm:text-lg"
+            }`}
+          >
             {primaryQuestionText}
           </h2>
           {bilingualSecondaryQuestionText && (
-            <div className="pt-2 mt-2 border-t border-dashed border-slate-200 dark:border-slate-800">
-              <p className="text-sm font-medium text-slate-700 dark:text-slate-300 font-sans leading-relaxed">
+            <div className="pt-2.5 mt-2.5 border-t border-dashed border-slate-200 dark:border-slate-800">
+              <p className="text-base sm:text-lg font-medium text-slate-800 dark:text-slate-200 font-sans leading-relaxed">
                 {bilingualSecondaryQuestionText}
               </p>
             </div>
@@ -545,29 +598,37 @@ export function QuizPlayer({ quizId }: QuizPlayerProps) {
                 key={opt.key}
                 onClick={() => handleSelectOption(opt.key)}
                 disabled={Boolean(selectedOption) || isEvaluating}
-                className={`w-full rounded-2xl p-3.5 flex items-center gap-3 text-left transition-all btn-3d ${cardStyle}`}
+                className={`w-full rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 text-left transition-all btn-3d ${cardStyle}`}
               >
                 <div
-                  className={`w-8 h-8 rounded-xl font-black text-xs flex items-center justify-center shrink-0 transition-colors ${pillStyle}`}
+                  className={`w-9 h-9 rounded-xl font-black text-sm flex items-center justify-center shrink-0 transition-colors ${pillStyle}`}
                 >
                   {opt.key}
                 </div>
-                <div className="flex-1 text-xs font-bold leading-snug">
-                  <div>{opt.primary}</div>
+                <div className="flex-1 min-w-0">
+                  <div
+                    className={`font-bold leading-snug ${
+                      isHindiOnly
+                        ? "text-base sm:text-[17px] font-sans"
+                        : "text-[15px] sm:text-base"
+                    }`}
+                  >
+                    {opt.primary}
+                  </div>
                   {opt.secondary && (
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium font-sans mt-0.5">
+                    <div className="text-sm sm:text-[15px] text-slate-600 dark:text-slate-300 font-medium font-sans mt-0.5 leading-snug">
                       {opt.secondary}
                     </div>
                   )}
                 </div>
                 {feedback && isSelected && feedback.isCorrect && (
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 animate-pop" />
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 animate-pop ml-auto" />
                 )}
                 {feedback && isSelected && !feedback.isCorrect && (
-                  <XCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                  <XCircle className="w-5 h-5 text-rose-600 shrink-0 ml-auto" />
                 )}
                 {feedback && !isSelected && isCorrectAnswer && (
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 ml-auto" />
                 )}
               </button>
             );
@@ -607,31 +668,51 @@ export function QuizPlayer({ quizId }: QuizPlayerProps) {
                     }`}
                   >
                     {feedback.isCorrect
-                      ? "Nicely done! 🎉"
-                      : `Correct Answer: Option ${feedback.correctOption}`}
+                      ? streak >= 10
+                        ? isHindiOnly
+                          ? `कमाल! लगातार ${streak} सही! 👑`
+                          : `UNSTOPPABLE! ${streak} in a row! 👑`
+                        : streak >= 5
+                        ? isHindiOnly
+                          ? `शानदार! लगातार ${streak} सही! 🔥`
+                          : `Awesome! ${streak} in a row! 🔥`
+                        : streak >= 3
+                        ? isHindiOnly
+                          ? `लगातार ${streak} सही! ⚡`
+                          : `Hot streak! ${streak} in a row! ⚡`
+                        : streak === 2
+                        ? isHindiOnly
+                          ? "शानदार लय! लगातार 2 सही! 🎉"
+                          : "Nice streak! 2 in a row! 🎉"
+                        : isHindiOnly
+                        ? "बहुत बढ़िया! 🎉"
+                        : "Great! 🎉"
+                      : isHindiOnly
+                      ? "कोई बात नहीं, फिर कोशिश करो! 💪"
+                      : "Almost! Keep going! 💪"}
                   </h4>
                   {isBilingual ? (
-                    <div className="mt-0.5 space-y-0.5">
+                    <div className="mt-1 space-y-1">
                       {(feedback.bilingual?.en?.explanation || feedback.explanationEn) && (
-                        <p className="text-xs leading-relaxed font-medium text-slate-800 dark:text-slate-200">
+                        <p className="text-xs sm:text-sm leading-relaxed font-medium text-slate-800 dark:text-slate-200">
                           {feedback.bilingual?.en?.explanation || feedback.explanationEn}
                         </p>
                       )}
                       {(feedback.bilingual?.hi?.explanation || feedback.explanationHi) && (
-                        <p className="text-xs leading-relaxed font-medium text-slate-700 dark:text-slate-300 font-sans">
+                        <p className="text-sm sm:text-base leading-relaxed font-medium text-slate-800 dark:text-slate-200 font-sans">
                           {feedback.bilingual?.hi?.explanation || feedback.explanationHi}
                         </p>
                       )}
                     </div>
                   ) : isHindiOnly ? (
-                    <p className="text-xs mt-0.5 leading-relaxed font-medium text-slate-800 dark:text-slate-200">
+                    <p className="text-sm sm:text-base mt-1 leading-relaxed font-medium text-slate-800 dark:text-slate-200 font-sans">
                       {feedback.bilingual?.hi?.explanation ||
                         feedback.explanationHi ||
                         feedback.bilingual?.en?.explanation ||
                         feedback.explanationEn}
                     </p>
                   ) : (
-                    <p className="text-xs mt-0.5 leading-relaxed font-medium text-slate-800 dark:text-slate-200">
+                    <p className="text-xs sm:text-sm mt-1 leading-relaxed font-medium text-slate-800 dark:text-slate-200">
                       {feedback.bilingual?.en?.explanation ||
                         feedback.explanationEn ||
                         feedback.bilingual?.hi?.explanation ||
@@ -650,16 +731,31 @@ export function QuizPlayer({ quizId }: QuizPlayerProps) {
               )}
             </div>
 
+            {/* Duolingo Progressive Streak Banner */}
+            <ProgressiveStreakBanner
+              streak={streak}
+              isCorrect={feedback.isCorrect}
+              languageMode={languageMode}
+            />
+
             {/* Tactile Duolingo "Continue" Button */}
             <button
               onClick={handleContinue}
-              className={`w-full py-3.5 px-4 rounded-2xl font-black text-sm uppercase tracking-wider text-white shadow-lg transition-all flex items-center justify-center gap-2 ${
+              className={`w-full py-3.5 px-4 rounded-2xl font-black text-sm uppercase tracking-wider text-white shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
                 feedback.isCorrect
                   ? "bg-emerald-600 hover:bg-emerald-500 border-b-4 border-emerald-800 active:border-b-0 active:translate-y-1 shadow-emerald-600/30"
                   : "bg-rose-600 hover:bg-rose-500 border-b-4 border-rose-800 active:border-b-0 active:translate-y-1 shadow-rose-600/30"
               }`}
             >
-              <span>{currentIndex + 1 < totalQuestions ? "Continue" : "View Results"}</span>
+              <span>
+                {currentIndex + 1 < totalQuestions
+                  ? isHindiOnly
+                    ? "आगे बढ़ें"
+                    : "Continue"
+                  : isHindiOnly
+                  ? "परिणाम देखें"
+                  : "View Results"}
+              </span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

@@ -31,6 +31,21 @@ export interface TestSeries {
   test_categories?: TestCategory | null;
 }
 
+export interface LatestAttemptSummary {
+  id: string;
+  status: string;
+  score: number;
+  totalMarks: number;
+  accuracy: number;
+  attemptedCount: number;
+  correctCount: number;
+  incorrectCount: number;
+  unansweredCount: number;
+  timeTakenSeconds: number;
+  isPassed: boolean;
+  submittedAt: string | null;
+}
+
 export interface TestSeriesItem {
   id: string;
   series_id: string;
@@ -46,6 +61,7 @@ export interface TestSeriesItem {
   is_published: boolean;
   created_at: string;
   test_series?: TestSeries | null;
+  latestAttempt?: LatestAttemptSummary | null;
 }
 
 export interface Chapter {

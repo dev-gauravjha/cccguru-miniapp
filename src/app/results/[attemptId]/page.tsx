@@ -529,7 +529,7 @@ export default function ResultDetailPage({ params }: ResultDetailPageProps) {
                       )}
                       {(languageMode === "hi" || languageMode === "both") &&
                         q.question_hi && (
-                          <p className="text-slate-800 dark:text-slate-200 font-medium font-sans">
+                          <p className="text-base sm:text-lg text-slate-800 dark:text-slate-200 font-medium font-sans">
                             {q.question_hi}
                           </p>
                         )}
@@ -556,7 +556,7 @@ export default function ResultDetailPage({ params }: ResultDetailPageProps) {
                         return (
                           <div
                             key={key}
-                            className={`p-3 rounded-2xl border text-sm flex items-start gap-3 transition-all ${borderClass}`}
+                            className={`p-3 rounded-2xl border text-base flex items-start gap-3 transition-all ${borderClass}`}
                           >
                             <div
                               className={`w-7 h-7 rounded-xl font-black text-xs flex items-center justify-center shrink-0 border-b-2 ${
@@ -572,20 +572,20 @@ export default function ResultDetailPage({ params }: ResultDetailPageProps) {
                             <div className="flex-1 space-y-1 min-w-0 pt-0.5">
                               {(languageMode === "en" || languageMode === "both") &&
                                 optEn && (
-                                  <div className="leading-relaxed font-bold">
+                                  <div className="leading-relaxed font-bold text-base">
                                     {optEn}
                                   </div>
                                 )}
                               {(languageMode === "hi" || languageMode === "both") &&
                                 optHi && (
-                                  <div className="text-slate-700 dark:text-slate-300 font-medium font-sans leading-relaxed">
+                                  <div className="text-slate-700 dark:text-slate-300 font-medium font-sans leading-relaxed text-base">
                                     {optHi}
                                   </div>
                                 )}
                             </div>
                             {isCorrectAnswer && (
                               <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-black shrink-0 bg-emerald-100 dark:bg-emerald-950/80 px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-800">
-                                Official Key ✓
+                                Correct Key ✓
                               </span>
                             )}
                             {isUserChoice && !isCorrectAnswer && (

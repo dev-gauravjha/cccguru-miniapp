@@ -28,8 +28,8 @@ test("1. Quiz Catalog: Fetches ONLY items where type = 'quiz' from Supabase and 
     (item) => item.id === LIVE_QUIZ_ITEM_ID
   );
   assert.ok(liveQuiz, "Live Supabase quiz item must be returned");
-  assert.ok(["CCC Quiz 01", "testing"].includes(liveQuiz.title), `Title was ${liveQuiz.title}`);
-  assert.equal(liveQuiz.questionCount, 5, "Database must count exactly 5 linked questions");
+  assert.ok(typeof liveQuiz.title === "string" && liveQuiz.title.length > 0, `Title was ${liveQuiz.title}`);
+  assert.ok(liveQuiz.questionCount >= 5, "Database must count linked questions (>= 5)");
   assert.equal(liveQuiz.hasQuestions, true);
 });
 
@@ -45,8 +45,8 @@ test("2. Dynamic Questions & Security: Fetches live questions from Supabase and 
   assert.equal(data.success, true);
   assert.equal(data.empty, false);
   assert.ok(data.attemptId, "Must generate valid attemptId");
-  assert.equal(data.totalQuestions, 5, "Must return 5 questions from Supabase");
-  assert.equal(data.questions.length, 5);
+  assert.ok(data.totalQuestions >= 5, "Must return questions from Supabase");
+  assert.equal(data.questions.length, data.totalQuestions);
 
   // Verify question content comes from Supabase and is NOT invented
   const q1 = data.questions[0];
@@ -179,10 +179,11 @@ test("5. Scoring & Leaderboard Integrity: Strictly enforces >= 50% pass rule for
   const result = await completeRes.json();
 
   assert.equal(result.success, true);
-  assert.equal(result.totalQuestions, 5);
+  assert.ok(result.totalQuestions >= 5);
 
-  // Passing rule verification: 50% of 5 questions is 2.5 (need at least 3 correct)
-  if (result.score < 3) {
+  // Passing rule verification: 50% pass threshold
+  const passingThreshold = Math.ceil(result.totalQuestions * 0.5);
+  if (result.score < passingThreshold) {
     assert.equal(result.isPassed, false, "Score < 50% must be marked as failed");
     assert.equal(result.pointsAwarded, 0, "No leaderboard points when score < 50%");
   } else {

@@ -17,14 +17,18 @@ import {
   Star,
   Target,
   Trophy,
+  RotateCcw,
+  ChevronRight,
+  FileText,
 } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { useTelegram } from "@/components/providers/TelegramProvider";
 import { GameButton } from "@/components/gamified/GameButton";
 import { GameCard } from "@/components/gamified/GameCard";
+import { formatTimer } from "@/lib/utils";
 
 export default function TestsPage() {
-  const { triggerHaptic } = useTelegram();
+  const { triggerHaptic, user, session } = useTelegram();
   const [categories, setCategories] = useState<any[]>([]);
   const [seriesList, setSeriesList] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
@@ -32,11 +36,21 @@ export default function TestsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const studentId = session?.studentId || (user?.id ? `tg_${user.id}` : "");
+  const canonicalUserId = session?.canonicalUserId || "";
+
   const fetchTests = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/mini-app/tests");
+      const params = new URLSearchParams();
+      if (studentId) params.set("studentId", studentId);
+      if (canonicalUserId) params.set("canonicalUserId", canonicalUserId);
+      const url = params.toString()
+        ? `/api/mini-app/tests?${params.toString()}`
+        : "/api/mini-app/tests";
+
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to load test catalog");
       const json = await res.json();
       setCategories(json.categories || []);
@@ -47,7 +61,7 @@ export default function TestsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [studentId, canonicalUserId]);
 
   useEffect(() => {
     fetchTests();
@@ -81,21 +95,18 @@ export default function TestsPage() {
       case "easy":
         return {
           label: "Easy",
-          points: "+75 pts",
           badgeClass:
             "text-emerald-700 bg-emerald-50 dark:text-emerald-300 dark:bg-emerald-950/80 border-emerald-300 dark:border-emerald-700",
         };
       case "hard":
         return {
           label: "Hard",
-          points: "+150 pts",
           badgeClass:
             "text-rose-700 bg-rose-50 dark:text-rose-300 dark:bg-rose-950/80 border-rose-300 dark:border-rose-700",
         };
       default:
         return {
           label: "Medium",
-          points: "+100 pts",
           badgeClass:
             "text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/80 border-amber-300 dark:border-amber-700",
         };
@@ -245,6 +256,8 @@ export default function TestsPage() {
                 (item.test_type || item.type || "").toLowerCase().includes("quiz")
               );
 
+              const qCount = item.question_count || 100;
+
               return (
                 <div key={item.id} className="game-card p-4 space-y-3">
                   <div className="flex items-start justify-between gap-2">
@@ -268,9 +281,47 @@ export default function TestsPage() {
 
                     <span className="text-[10px] font-black bg-amber-400/20 text-amber-700 dark:text-amber-300 border border-amber-400/30 px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1">
                       <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
-                      {diff.points}
+                      +{qCount} pts
                     </span>
                   </div>
+
+                  {/* Inline Result & History Card */}
+                  {item.latestAttempt && (
+                    <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                              item.latestAttempt.isPassed
+                                ? "bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800"
+                                : "bg-rose-50 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800"
+                            }`}
+                          >
+                            {item.latestAttempt.isPassed ? "PASSED ✓" : "NEEDS PRACTICE"}
+                          </span>
+                          <span className="text-[11px] font-black text-slate-700 dark:text-slate-300">
+                            Score: {item.latestAttempt.score} / {item.latestAttempt.totalMarks}
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">
+                          {item.latestAttempt.accuracy}% Accuracy
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1.5 border-t border-slate-200/60 dark:border-slate-800">
+                        <span>Time: {formatTimer(item.latestAttempt.timeTakenSeconds)}</span>
+                        <Link
+                          href={`/results/${item.latestAttempt.id}`}
+                          onClick={() => triggerHaptic("selection")}
+                          className="text-primary-600 dark:text-primary-400 font-bold hover:underline flex items-center gap-1 text-[11px]"
+                        >
+                          <FileText className="w-3 h-3" />
+                          <span>View Result</span>
+                          <ChevronRight className="w-3 h-3" />
+                        </Link>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Meta stats and 3D Action button */}
                   <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-2.5 border-t border-slate-100 dark:border-slate-800">
@@ -286,7 +337,16 @@ export default function TestsPage() {
                       </span>
                     </div>
 
-                    {isQuiz ? (
+                    {item.latestAttempt ? (
+                      <Link
+                        href={isQuiz ? `/quiz/${item.id}` : `/exam/${item.id}`}
+                        onClick={() => triggerHaptic("medium")}
+                        className="btn-3d-amber px-4 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Reattempt</span>
+                      </Link>
+                    ) : isQuiz ? (
                       <Link
                         href={`/quiz/${item.id}`}
                         onClick={() => triggerHaptic("selection")}

@@ -15,11 +15,13 @@ import {
   Award,
   Sparkles,
   Zap,
+  RotateCcw,
 } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { useTelegram } from "@/components/providers/TelegramProvider";
 import { GameButton } from "@/components/gamified/GameButton";
 import { GameCard } from "@/components/gamified/GameCard";
+import { formatTimer } from "@/lib/utils";
 
 // Detailed topic highlights for each of the 9 NIELIT CCC chapters
 const CHAPTER_METADATA: Record<
@@ -89,16 +91,26 @@ const CHAPTER_METADATA: Record<
 };
 
 export default function ChaptersPage() {
-  const { triggerHaptic } = useTelegram();
+  const { triggerHaptic, user, session } = useTelegram();
   const [chapters, setChapters] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const studentId = session?.studentId || (user?.id ? `tg_${user.id}` : "");
+  const canonicalUserId = session?.canonicalUserId || "";
 
   const fetchChapters = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/mini-app/chapters");
+      const params = new URLSearchParams();
+      if (studentId) params.set("studentId", studentId);
+      if (canonicalUserId) params.set("canonicalUserId", canonicalUserId);
+      const url = params.toString()
+        ? `/api/mini-app/chapters?${params.toString()}`
+        : "/api/mini-app/chapters";
+
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to load chapters");
       const json = await res.json();
       setChapters(json.chapters || []);
@@ -107,7 +119,7 @@ export default function ChaptersPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [studentId, canonicalUserId]);
 
   useEffect(() => {
     fetchChapters();
@@ -126,7 +138,7 @@ export default function ChaptersPage() {
               NIELIT CCC Syllabus Roadmap
             </span>
             <h2 className="text-lg font-black tracking-tight">
-              {chapters.length > 0 ? `${chapters.length} Official Syllabus Chapters 🗺️` : "NIELIT CCC Chapters 🗺️"}
+              {chapters.length > 0 ? `${chapters.length} Syllabus Chapters 🗺️` : "NIELIT CCC Chapters 🗺️"}
             </h2>
             <p className="text-xs text-primary-100 leading-relaxed max-w-[320px]">
               Progress along the CCC learning path. Complete each chapter test to earn points and build exam readiness.
@@ -190,7 +202,7 @@ export default function ChaptersPage() {
                           </span>
                           <span className="text-[10px] font-black text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800 flex items-center gap-1">
                             <Star className="w-3 h-3 fill-current text-amber-500" />
-                            +100 Points
+                            +{chap.questionCount || 100} pts
                           </span>
                         </div>
 
@@ -216,7 +228,41 @@ export default function ChaptersPage() {
                       </p>
                     </div>
 
-                    {/* Footer Stats & Tactile Start Button */}
+                    {/* Inline Result Card if Attempted */}
+                    {chap.latestAttempt && (
+                      <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 rounded-xl p-2.5 space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-black text-slate-700 dark:text-slate-300">
+                            Score: {chap.latestAttempt.score} / {chap.latestAttempt.totalMarks}
+                          </span>
+                          <span
+                            className={`text-[9px] font-black px-1.5 py-0.2 rounded-full border ${
+                              chap.latestAttempt.isPassed
+                                ? "bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border-emerald-300"
+                                : "bg-rose-50 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border-rose-300"
+                            }`}
+                          >
+                            {chap.latestAttempt.isPassed ? "PASSED ✓" : "NEEDS PRACTICE"}
+                          </span>
+                          <span className="font-black text-emerald-600 dark:text-emerald-400 text-[10px]">
+                            {chap.latestAttempt.accuracy}% Accuracy
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-200/50 dark:border-slate-800">
+                          <span>Time: {formatTimer(chap.latestAttempt.timeTakenSeconds)}</span>
+                          <Link
+                            href={`/results/${chap.latestAttempt.id}`}
+                            onClick={() => triggerHaptic("selection")}
+                            className="text-primary-600 dark:text-primary-400 font-bold hover:underline flex items-center gap-0.5"
+                          >
+                            <span>View Result</span>
+                            <ChevronRight className="w-3 h-3" />
+                          </Link>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Footer Stats & Tactile Action Button */}
                     <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800/80">
                       <div className="flex items-center gap-2.5 text-xs text-slate-500 font-semibold">
                         <span className="flex items-center gap-1">
@@ -230,14 +276,25 @@ export default function ChaptersPage() {
                         </span>
                       </div>
 
-                      <Link
-                        href={`/exam/${chap.testItemId}`}
-                        onClick={() => triggerHaptic("medium")}
-                        className="btn-3d-primary px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm"
-                      >
-                        <Play className="w-3 h-3 fill-current" />
-                        <span>Start Test</span>
-                      </Link>
+                      {chap.latestAttempt ? (
+                        <Link
+                          href={`/exam/${chap.testItemId}`}
+                          onClick={() => triggerHaptic("medium")}
+                          className="btn-3d-amber px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Reattempt</span>
+                        </Link>
+                      ) : (
+                        <Link
+                          href={`/exam/${chap.testItemId}`}
+                          onClick={() => triggerHaptic("medium")}
+                          className="btn-3d-primary px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm"
+                        >
+                          <Play className="w-3 h-3 fill-current" />
+                          <span>Start Test</span>
+                        </Link>
+                      )}
                     </div>
                   </div>
                 </div>

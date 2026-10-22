@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
     const studentId = queryStudentId || session?.studentId || "preview_student_demo";
     const canonicalUserId =
       queryCanonicalId ||
-      session?.canonicalUserId ||
+      (queryStudentId ? undefined : session?.canonicalUserId) ||
       (studentId === "preview_student_demo"
         ? "00000000-0000-0000-0000-000000000001"
         : undefined);

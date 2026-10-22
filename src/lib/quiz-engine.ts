@@ -1,6 +1,7 @@
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getStudentLatestAttemptsMap } from "@/lib/test-engine";
 import crypto from "crypto";
-import type { Question, TestSeriesItem } from "@/types/database";
+import type { Question, TestSeriesItem, LatestAttemptSummary } from "@/types/database";
 
 export interface BilingualContent {
   question: string;
@@ -137,7 +138,19 @@ export async function getQuizCatalog(
 
   const rawQuizItems = (allItems || []).filter(isQuizTestItem);
 
-  // Enrich with question counts from database
+  const targetStudentId = studentId || "preview_student_demo";
+  const targetCanonicalId =
+    canonicalUserId ||
+    (targetStudentId === "preview_student_demo"
+      ? "00000000-0000-0000-0000-000000000001"
+      : undefined);
+
+  const attemptsMap = await getStudentLatestAttemptsMap(
+    targetStudentId,
+    targetCanonicalId
+  );
+
+  // Enrich with question counts and user latest attempt
   const quizItems = await Promise.all(
     rawQuizItems.map(async (item: any) => {
       const questions = await getRawQuestionsForQuizItem(item.id);
@@ -150,6 +163,7 @@ export async function getQuizCatalog(
         difficulty: item.difficulty || "Medium",
         isPaid: Boolean(item.test_series?.is_paid),
         hasQuestions: questions.length > 0,
+        latestAttempt: attemptsMap.get(item.id) || null,
       };
     })
   );
@@ -160,20 +174,14 @@ export async function getQuizCatalog(
     totalQuestionsSolved: 0,
     avgAccuracy: 0,
     bestStreak: 0,
+    dayStreak: 1,
     totalPoints: 0,
   };
-
-  const targetStudentId = studentId || "preview_student_demo";
-  const targetCanonicalId =
-    canonicalUserId ||
-    (targetStudentId === "preview_student_demo"
-      ? "00000000-0000-0000-0000-000000000001"
-      : undefined);
 
   try {
     let query = supabase
       .from("student_test_attempts")
-      .select("score, total_marks, correct_count, attempted_count, accuracy, status")
+      .select("score, total_marks, correct_count, attempted_count, accuracy, status, created_at")
       .eq("status", "evaluated");
 
     if (targetStudentId && targetCanonicalId) {
@@ -208,14 +216,61 @@ export async function getQuizCatalog(
         return Math.max(max, correct);
       }, 0);
 
+      const dayStrings = new Set<string>();
+      const formatter = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+
+      for (const a of attempts) {
+        if (!a.created_at) continue;
+        try {
+          const parsed = new Date(a.created_at);
+          if (!isNaN(parsed.getTime())) {
+            dayStrings.add(formatter.format(parsed));
+          }
+        } catch {}
+      }
+
+      let computedDayStreak = 1;
+      if (dayStrings.size > 0) {
+        const now = new Date();
+        const todayStr = formatter.format(now);
+        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const yesterdayStr = formatter.format(yesterday);
+
+        let checkDate = now;
+        if (!dayStrings.has(todayStr)) {
+          if (dayStrings.has(yesterdayStr)) {
+            checkDate = yesterday;
+          } else {
+            checkDate = null as any;
+          }
+        }
+
+        if (checkDate) {
+          let s = 0;
+          while (true) {
+            const formatted = formatter.format(checkDate);
+            if (dayStrings.has(formatted)) {
+              s++;
+              checkDate = new Date(checkDate.getTime() - 24 * 60 * 60 * 1000);
+            } else {
+              break;
+            }
+          }
+          computedDayStreak = Math.max(1, s);
+        }
+      }
+
       userStats = {
         quizzesCompleted: total,
         totalQuestionsSolved: totalSolved,
         avgAccuracy: Math.round(totalAccuracy / total),
-        bestStreak: Math.min(
-          15,
-          Math.max(1, maxCorrect > 15 ? 10 : maxCorrect)
-        ),
+        bestStreak: maxCorrect,
+        dayStreak: computedDayStreak,
         totalPoints: Math.round(totalScore),
       };
     } else if (targetCanonicalId) {
@@ -234,6 +289,7 @@ export async function getQuizCatalog(
           totalQuestionsSolved: totalSolved,
           avgAccuracy: totalSolved > 0 ? Math.round((totalCorrect / totalSolved) * 100) : 0,
           bestStreak: Math.max(...events.map((e) => e.correct_count || 0), 1),
+          dayStreak: 1,
           totalPoints: totalPts,
         };
       }
@@ -289,7 +345,7 @@ export async function startQuizSession(params: {
   if (rawQuestions.length === 0) {
     return {
       empty: true,
-      message: "No questions available for this quiz in the database.",
+      message: "No questions available for this quiz yet.",
       attemptId: "",
       title: item.title,
       totalQuestions: 0,
@@ -297,9 +353,47 @@ export async function startQuizSession(params: {
     };
   }
 
-  const attemptId = crypto.randomUUID();
+  // Check if an attempt already exists for this student and quiz item to avoid duplicate history!
+  let existingAttemptId: string | null = null;
+  let existingCreatedAt: string | null = null;
+
+  try {
+    let query = supabase
+      .from("student_test_attempts")
+      .select("id, created_at")
+      .eq("test_item_id", item.id);
+
+    if (params.studentId && params.canonicalUserId) {
+      query = query.or(
+        `student_id.eq.${params.studentId},canonical_user_id.eq.${params.canonicalUserId}`
+      );
+    } else if (params.studentId) {
+      query = query.eq("student_id", params.studentId);
+    } else if (params.canonicalUserId) {
+      query = query.eq("canonical_user_id", params.canonicalUserId);
+    }
+
+    const { data: existingAttempts } = await query.order("updated_at", {
+      ascending: false,
+    });
+    if (existingAttempts && existingAttempts.length > 0) {
+      existingAttemptId = existingAttempts[0].id;
+      existingCreatedAt = existingAttempts[0].created_at;
+
+      // Clean up legacy duplicate rows if multiple existed previously
+      if (existingAttempts.length > 1) {
+        const extraIds = existingAttempts.slice(1).map((a: any) => a.id);
+        await supabase.from("student_test_attempts").delete().in("id", extraIds);
+      }
+    }
+  } catch (err) {
+    console.warn("Could not check existing quiz attempt:", err);
+  }
+
+  const attemptId = existingAttemptId || crypto.randomUUID();
   const rawMap = new Map<string, Question>();
   rawQuestions.forEach((q) => rawMap.set(q.id, q));
+  const now = new Date().toISOString();
 
   // Initialize session in ledger
   const session: QuizSession = {
@@ -314,22 +408,20 @@ export async function startQuizSession(params: {
     answersMap: new Map(),
     currentStreak: 0,
     bestStreak: 0,
-    startedAt: new Date().toISOString(),
+    startedAt: now,
   };
 
   activeQuizSessions.set(attemptId, session);
 
-  // Pre-record in_progress attempt in Supabase
+  // Persist attempt: UPDATE existing single row or INSERT new single row
   try {
-    await (supabase as any).from("student_test_attempts").insert({
-      id: attemptId,
-      student_id: params.studentId,
+    const updatePayload: any = {
       canonical_user_id: params.canonicalUserId || null,
       student_type: "telegram",
       student_name: params.studentName || "Student",
-      test_item_id: item.id,
       status: "in_progress",
-      started_at: session.startedAt,
+      started_at: now,
+      submitted_at: null,
       time_taken_seconds: 0,
       total_questions: rawQuestions.length,
       attempted_count: 0,
@@ -339,9 +431,45 @@ export async function startQuizSession(params: {
       score: 0,
       total_marks: rawQuestions.length,
       accuracy: 0,
-    });
+      updated_at: now,
+    };
+
+    let opErr: any;
+    if (existingAttemptId) {
+      const res = await (supabase as any)
+        .from("student_test_attempts")
+        .update(updatePayload)
+        .eq("id", existingAttemptId);
+      opErr = res.error;
+    } else {
+      const insertPayload = {
+        id: attemptId,
+        student_id: params.studentId,
+        test_item_id: item.id,
+        ...updatePayload,
+      };
+      const res = await (supabase as any).from("student_test_attempts").insert(insertPayload);
+      opErr = res.error;
+    }
+
+    if (opErr && (opErr as any).code === "23503") {
+      updatePayload.canonical_user_id = null;
+      if (existingAttemptId) {
+        await (supabase as any)
+          .from("student_test_attempts")
+          .update(updatePayload)
+          .eq("id", existingAttemptId);
+      } else {
+        await (supabase as any).from("student_test_attempts").insert({
+          id: attemptId,
+          student_id: params.studentId,
+          test_item_id: item.id,
+          ...updatePayload,
+        });
+      }
+    }
   } catch (err) {
-    console.error("[QuizEngine] Could not pre-insert attempt:", err);
+    console.error("[QuizEngine] Could not record attempt:", err);
   }
 
   // Sanitize questions: strip correct_option & explanation, provide bilingual structure
@@ -430,7 +558,7 @@ export async function submitQuizAnswer(params: {
       .maybeSingle();
 
     if (!dbQ) {
-      throw new Error("Question not found in database.");
+      throw new Error("Question not found.");
     }
     question = dbQ as Question;
   }
@@ -438,11 +566,11 @@ export async function submitQuizAnswer(params: {
   const expEn =
     question.explanation_en ||
     question.explanation_hi ||
-    "Official NIELIT CCC curriculum verification.";
+    "NIELIT CCC curriculum standard.";
   const expHi =
     question.explanation_hi ||
     question.explanation_en ||
-    "आधिकारिक सीसीसी पाठ्यक्रम सत्यापन।";
+    "सीसीसी पाठ्यक्रम मानक अनुसार।";
 
   // Prevent multiple answers for the same question
   if (session && session.answersMap.has(params.questionId)) {
@@ -578,6 +706,12 @@ export async function completeQuizSession(params: {
     }
   }
 
+  // Ensure totalQuestions is accurately set if missing from memory or attempt
+  if (totalQuestions === 0 && testItemId) {
+    const rawQuestions = await getRawQuestionsForQuizItem(testItemId);
+    totalQuestions = rawQuestions.length;
+  }
+
   const attemptedCount = correctCount + incorrectCount;
   const unansweredCount = Math.max(0, totalQuestions - attemptedCount);
   const score = correctCount;
@@ -595,10 +729,10 @@ export async function completeQuizSession(params: {
 
   // 1. Update attempt status to 'evaluated' in Supabase
   try {
-    const { error: upsertErr } = await (supabase as any).from("student_test_attempts").upsert({
+    const attemptRecord: any = {
       id: params.attemptId,
       student_id: studentId,
-      canonical_user_id: canonicalUserId,
+      canonical_user_id: canonicalUserId || null,
       test_item_id: testItemId,
       status: "evaluated",
       submitted_at: submittedAt,
@@ -611,7 +745,16 @@ export async function completeQuizSession(params: {
       total_marks: totalQuestions,
       accuracy,
       updated_at: submittedAt,
-    });
+    };
+
+    let { error: upsertErr } = await (supabase as any).from("student_test_attempts").upsert(attemptRecord);
+
+    if (upsertErr && (upsertErr as any).code === "23503") {
+      // Foreign key constraint violation on canonical_user_id
+      attemptRecord.canonical_user_id = null;
+      const retry = await (supabase as any).from("student_test_attempts").upsert(attemptRecord);
+      upsertErr = retry.error;
+    }
 
     if (upsertErr) {
       console.error("[QuizEngine] Error updating student_test_attempts:", upsertErr);
@@ -619,15 +762,18 @@ export async function completeQuizSession(params: {
 
     // 2. Award Leaderboard Points ONLY IF passing (score >= 50%)
     if (canonicalUserId && pointsToAward > 0 && testItemId) {
-      await (supabase as any).from("leaderboard_point_events").insert({
-        canonical_user_id: canonicalUserId,
-        attempt_id: params.attemptId,
-        test_item_id: testItemId,
-        points_awarded: pointsToAward,
-        correct_count: correctCount,
-        total_questions: totalQuestions,
-        created_at: submittedAt,
-      });
+      await (supabase as any).from("leaderboard_point_events").upsert(
+        {
+          canonical_user_id: canonicalUserId,
+          attempt_id: params.attemptId,
+          test_item_id: testItemId,
+          points_awarded: pointsToAward,
+          correct_count: correctCount,
+          total_questions: totalQuestions,
+          created_at: submittedAt,
+        },
+        { onConflict: "attempt_id" }
+      );
     }
   } catch (err) {
     console.error("[QuizEngine] Error persisting completed quiz attempt:", err);

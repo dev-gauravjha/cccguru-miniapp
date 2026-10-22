@@ -17,7 +17,6 @@ import {
   Loader2,
   Zap,
   Star,
-  Compass,
   Award,
   AlertCircle,
   HelpCircle,
@@ -30,7 +29,6 @@ import { GameButton } from "@/components/gamified/GameButton";
 import { GameCard } from "@/components/gamified/GameCard";
 import {
   StreakFlame,
-  GameProgressBar,
   getPlayerLevel,
 } from "@/components/gamified/GamifiedWidgets";
 import { GuruMascot } from "@/components/gamified/GuruMascot";
@@ -85,6 +83,19 @@ export default function HomePage() {
       const dashJson = await dashRes.json();
       setData(dashJson);
 
+      if (typeof window !== "undefined") {
+        if (dashJson?.stats?.dayStreak !== undefined) {
+          try {
+            localStorage.setItem("ccc_day_streak", String(dashJson.stats.dayStreak));
+          } catch {}
+        }
+        if (dashJson?.stats?.totalPoints !== undefined) {
+          try {
+            localStorage.setItem("ccc_total_points", String(dashJson.stats.totalPoints));
+          } catch {}
+        }
+      }
+
       if (lbRes && lbRes.ok) {
         const lbJson = await lbRes.json();
         if (lbJson.leaderboard) {
@@ -118,9 +129,7 @@ export default function HomePage() {
 
   const playerLevel = getPlayerLevel(totalPoints, questionsSolved, accuracy);
 
-  // Resume item: either the most recent completed test or Chapter 1
-  const recentAttempt = data?.recentResults?.[0];
-  const firstChapter = data?.chapterTests?.[0];
+  // Default mock test
   const defaultMock = data?.mockTests?.[0];
 
   return (
@@ -177,18 +186,22 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* 3. Level / Progress */}
-          <div className="game-card p-3 text-center flex flex-col items-center justify-center">
-            <div className="w-8 h-8 rounded-xl bg-primary-100 dark:bg-primary-950/80 text-primary-600 dark:text-primary-400 flex items-center justify-center mb-1 border border-primary-200 dark:border-primary-800">
+          {/* 3. Tests Taken */}
+          <Link
+            href="/tests"
+            onClick={() => triggerHaptic("selection")}
+            className="game-card p-3 text-center flex flex-col items-center justify-center hover:border-primary-400 dark:hover:border-primary-600 transition-colors cursor-pointer group"
+          >
+            <div className="w-8 h-8 rounded-xl bg-primary-100 dark:bg-primary-950/80 text-primary-600 dark:text-primary-400 flex items-center justify-center mb-1 border border-primary-200 dark:border-primary-800 group-hover:scale-105 transition-transform">
               <Target className="w-4 h-4" />
             </div>
             <div className="text-base font-black text-slate-900 dark:text-white leading-none">
-              Level {playerLevel.level}
+              {testsTaken}
             </div>
             <div className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase mt-1">
-              {data?.stats?.preparationPercentage ?? 25}% Ready
+              Tests Taken
             </div>
-          </div>
+          </Link>
         </section>
 
         {/* Error State if fetch failed */}
@@ -205,87 +218,6 @@ export default function HomePage() {
             </button>
           </div>
         )}
-
-        {/* D. Continue Learning Card */}
-        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary-800 via-primary-700 to-indigo-800 text-white p-4 sm:p-5 shadow-md shadow-primary-800/25 border-2 border-primary-500/50 border-b-[6px] border-b-primary-950 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider bg-white/20 px-2.5 py-0.5 rounded-full">
-              <Compass className="w-3 h-3 text-amber-300" />
-              {recentAttempt ? "Resume Learning" : "Begin Your Journey"}
-            </span>
-
-            {recentAttempt ? (
-              <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/60 border border-emerald-500/40 px-2 py-0.5 rounded-full">
-                Recent: {recentAttempt.accuracy}% Accuracy
-              </span>
-            ) : (
-              <span className="text-[10px] font-bold text-amber-300 bg-amber-950/60 border border-amber-500/40 px-2 py-0.5 rounded-full">
-                Chapter 1 of 9
-              </span>
-            )}
-          </div>
-
-          <div>
-            <h3 className="text-base font-black leading-tight text-white">
-              {recentAttempt
-                ? recentAttempt.test_item?.title || "CCC Practice Test"
-                : firstChapter?.title || "Introduction to Computer & Hardware"}
-            </h3>
-            <p className="text-xs text-primary-200 mt-0.5 font-medium">
-              {recentAttempt
-                ? `Last score: ${recentAttempt.score}/${recentAttempt.total_marks || 100} • Continue solving practice questions`
-                : firstChapter?.hindiTitle || "कंप्यूटर का परिचय एवं हार्डवेयर"}
-            </p>
-          </div>
-
-          {/* Actual Progress Indicator */}
-          <div className="bg-white/10 backdrop-blur-xs p-2.5 rounded-xl border border-white/15 space-y-1.5">
-            <div className="flex items-center justify-between text-[11px] font-bold text-white/90">
-              <span>Course Progress</span>
-              <span>{data?.stats?.preparationPercentage ?? 25}%</span>
-            </div>
-            <GameProgressBar
-              progress={data?.stats?.preparationPercentage ?? 25}
-              color="amber"
-              height="sm"
-            />
-          </div>
-
-          {/* Prominent Action Button */}
-          <div className="pt-1">
-            {recentAttempt ? (
-              <Link
-                href={
-                  recentAttempt.test_item?.id
-                    ? `/exam/${recentAttempt.test_item.id}`
-                    : `/results/${recentAttempt.id}`
-                }
-                onClick={() => triggerHaptic("medium")}
-                className="btn-3d-amber w-full px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-md"
-              >
-                <Play className="w-4 h-4 fill-current" />
-                <span>Continue Learning</span>
-                <ArrowRight className="w-4 h-4 ml-1" />
-              </Link>
-            ) : (
-              <Link
-                href={
-                  firstChapter?.testItemId
-                    ? `/exam/${firstChapter.testItemId}`
-                    : defaultMock?.id
-                    ? `/exam/${defaultMock.id}`
-                    : "/tests"
-                }
-                onClick={() => triggerHaptic("medium")}
-                className="btn-3d-amber w-full px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-md"
-              >
-                <Play className="w-4 h-4 fill-current" />
-                <span>Start Learning • Stage 1</span>
-                <ArrowRight className="w-4 h-4 ml-1" />
-              </Link>
-            )}
-          </div>
-        </section>
 
         {/* E. Study & Practice Modules (2x2 Grid) */}
         <section className="space-y-2.5">

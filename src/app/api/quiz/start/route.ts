@@ -11,12 +11,17 @@ export async function POST(req: NextRequest) {
       session = createPreviewSession();
     }
 
-    const studentId = session?.studentId || "preview_student_demo";
-    const canonicalUserId = session?.canonicalUserId || "00000000-0000-0000-0000-000000000001";
-    const studentName = session?.name || "Student";
-
     const body = await req.json().catch(() => ({}));
     let testItemId = body.testItemId || body.quizId || body.itemId;
+
+    const studentId = body.studentId || session?.studentId || "preview_student_demo";
+    const canonicalUserId =
+      body.canonicalUserId ||
+      (body.studentId ? undefined : session?.canonicalUserId) ||
+      (studentId === "preview_student_demo"
+        ? "00000000-0000-0000-0000-000000000001"
+        : null);
+    const studentName = body.studentName || session?.name || "Student";
 
     if (!testItemId || testItemId === "daily") {
       // Find the first available quiz item from test_series_items in database
@@ -31,7 +36,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         empty: true,
-        message: "No quiz items available in the database.",
+        message: "No quiz items available currently.",
         questions: [],
         totalQuestions: 0,
       });

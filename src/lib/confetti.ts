@@ -164,3 +164,80 @@ export function fireVictoryCelebration() {
     // Ignore in unsupported environments
   }
 }
+
+/**
+ * Dedicated progressive celebration confetti for 5 and 10+ streak milestones.
+ */
+export function fireStreakMilestoneConfetti(streak: number) {
+  if (typeof window === "undefined") return;
+
+  try {
+    const isEpic = streak >= 10;
+
+    if (isEpic) {
+      // 10+ Streak: Epic Double Cannons + Golden Star Fountain
+      confetti({
+        particleCount: 50,
+        angle: 65,
+        spread: 60,
+        origin: { x: 0.1, y: 0.7 },
+        startVelocity: 45,
+        colors: [...VIBRANT_COLORS, ...GOLDEN_STREAK_COLORS],
+        disableForReducedMotion: true,
+      });
+
+      confetti({
+        particleCount: 50,
+        angle: 115,
+        spread: 60,
+        origin: { x: 0.9, y: 0.7 },
+        startVelocity: 45,
+        colors: [...VIBRANT_COLORS, ...GOLDEN_STREAK_COLORS],
+        disableForReducedMotion: true,
+      });
+
+      setTimeout(() => {
+        try {
+          confetti({
+            particleCount: 40,
+            spread: 90,
+            origin: { x: 0.5, y: 0.5 },
+            startVelocity: 30,
+            shapes: ["star"],
+            colors: GOLDEN_STREAK_COLORS,
+            scalar: 1.2,
+            disableForReducedMotion: true,
+          });
+        } catch {}
+      }, 200);
+    } else {
+      // 5 Streak: Major Celebratory Upward Burst
+      confetti({
+        particleCount: 55,
+        spread: 75,
+        origin: { x: 0.5, y: 0.65 },
+        startVelocity: 38,
+        gravity: 0.95,
+        colors: VIBRANT_COLORS,
+        disableForReducedMotion: true,
+      });
+
+      setTimeout(() => {
+        try {
+          confetti({
+            particleCount: 20,
+            spread: 60,
+            origin: { x: 0.5, y: 0.6 },
+            shapes: ["star"],
+            colors: GOLDEN_STREAK_COLORS,
+            startVelocity: 22,
+            disableForReducedMotion: true,
+          });
+        } catch {}
+      }, 150);
+    }
+  } catch {
+    // ignore
+  }
+}
+

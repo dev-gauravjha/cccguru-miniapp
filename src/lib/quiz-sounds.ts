@@ -173,3 +173,42 @@ export function playTapSound(): void {
   osc.stop(now + 0.045);
 }
 
+/**
+ * Duolingo-style celebratory fanfare for 5-in-a-row and 10-in-a-row streak milestones.
+ */
+export function playStreakMilestoneSound(streak: number): void {
+  if (!isSoundEnabled()) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  const isEpic = streak >= 10;
+
+  // Notes: for 5 -> F5, A5, C6, F6; for 10 -> C5, G5, C6, E6, G6
+  const notes = isEpic
+    ? [523.25, 783.99, 1046.5, 1318.51, 1567.98]
+    : [698.46, 880.0, 1046.5, 1396.91];
+
+  notes.forEach((freq, idx) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = isEpic ? "triangle" : "sine";
+    osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+
+    const startTime = now + idx * 0.08;
+    const duration = isEpic ? 0.6 : 0.45;
+
+    gain.gain.setValueAtTime(0.001, startTime);
+    gain.gain.linearRampToValueAtTime(isEpic ? 0.2 : 0.16, startTime + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(startTime);
+    osc.stop(startTime + duration);
+  });
+}
+
+

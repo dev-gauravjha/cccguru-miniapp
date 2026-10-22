@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Sparkles, Flame, Star, User as UserIcon } from "lucide-react";
 import { useTelegram } from "@/components/providers/TelegramProvider";
@@ -7,7 +8,7 @@ import { useTelegram } from "@/components/providers/TelegramProvider";
 export function Header({
   title,
   showStreak = true,
-  streak = 1,
+  streak,
   points,
   xp,
 }: {
@@ -18,7 +19,32 @@ export function Header({
   xp?: number;
 }) {
   const { session, isDevPreview, triggerHaptic } = useTelegram();
-  const displayPoints = points ?? xp;
+  const [cachedStreak, setCachedStreak] = useState<number>(1);
+  const [cachedPoints, setCachedPoints] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        if (streak !== undefined) {
+          localStorage.setItem("ccc_day_streak", String(streak));
+        } else {
+          const s = localStorage.getItem("ccc_day_streak");
+          if (s) setCachedStreak(Number(s) || 1);
+        }
+
+        const rawPts = points ?? xp;
+        if (rawPts !== undefined) {
+          localStorage.setItem("ccc_total_points", String(rawPts));
+        } else {
+          const p = localStorage.getItem("ccc_total_points");
+          if (p !== null) setCachedPoints(Number(p) || 0);
+        }
+      }
+    } catch {}
+  }, [streak, points, xp]);
+
+  const displayStreak = streak !== undefined ? streak : cachedStreak;
+  const displayPoints = (points ?? xp) !== undefined ? (points ?? xp) : cachedPoints;
 
   return (
     <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#090b14]/95 backdrop-blur-md border-b-2 border-slate-200/80 dark:border-slate-800/80 px-4 py-2.5 shadow-2xs">
@@ -66,14 +92,14 @@ export function Header({
             </div>
           )}
 
-          {/* Streak Flame */}
+          {/* Streak Flame (Daily Login Streak) */}
           {showStreak && (
             <div
               className="flex items-center gap-1 bg-orange-500/15 border border-orange-500/30 text-orange-600 dark:text-orange-400 px-2.5 py-1 rounded-full text-xs font-black shadow-2xs cursor-default"
-              title={`${streak}-day learning streak`}
+              title={`${displayStreak}-day login streak`}
             >
               <Flame className="w-3.5 h-3.5 fill-current text-orange-500 animate-flame" />
-              <span>{streak}d</span>
+              <span>{displayStreak}d</span>
             </div>
           )}
 

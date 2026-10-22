@@ -13,9 +13,12 @@ import {
   Award,
   Layers,
   HelpCircle,
+  RotateCcw,
 } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { useTelegram } from "@/components/providers/TelegramProvider";
+import { formatTimer } from "@/lib/utils";
+import type { LatestAttemptSummary } from "@/types/database";
 
 interface QuizItem {
   id: string;
@@ -26,6 +29,7 @@ interface QuizItem {
   difficulty: string;
   isPaid: boolean;
   hasQuestions: boolean;
+  latestAttempt?: LatestAttemptSummary | null;
 }
 
 interface QuizCatalogData {
@@ -35,6 +39,7 @@ interface QuizCatalogData {
     totalQuestionsSolved: number;
     avgAccuracy: number;
     bestStreak: number;
+    dayStreak?: number;
     totalPoints: number;
   };
 }
@@ -42,6 +47,7 @@ interface QuizCatalogData {
 export default function QuizHomePage() {
   const { triggerHaptic, user, session } = useTelegram();
   const [data, setData] = useState<QuizCatalogData | null>(null);
+  const [loginStreak, setLoginStreak] = useState<number>(1);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,10 +65,23 @@ export default function QuizHomePage() {
         ? `/api/quiz/catalog?${params.toString()}`
         : "/api/quiz/catalog";
 
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("Failed to load quiz catalog.");
-      const json = await res.json();
+      const [catalogRes, dashRes] = await Promise.all([
+        fetch(url),
+        fetch("/api/mini-app/dashboard").catch(() => null),
+      ]);
+
+      if (!catalogRes.ok) throw new Error("Failed to load quiz catalog.");
+      const json = await catalogRes.json();
       setData(json);
+
+      if (dashRes && dashRes.ok) {
+        const dashJson = await dashRes.json();
+        if (dashJson?.stats?.dayStreak) {
+          setLoginStreak(dashJson.stats.dayStreak);
+        }
+      } else if (json?.userStats?.dayStreak) {
+        setLoginStreak(json.userStats.dayStreak);
+      }
     } catch (err: any) {
       setError(err.message || "Failed to load quizzes");
     } finally {
@@ -78,6 +97,7 @@ export default function QuizHomePage() {
     quizzesCompleted: 0,
     avgAccuracy: 0,
     bestStreak: 0,
+    dayStreak: 1,
     totalPoints: 0,
   };
 
@@ -88,7 +108,7 @@ export default function QuizHomePage() {
     <div className="min-h-screen bg-slate-50 dark:bg-[#090b14] flex flex-col pb-24">
       <Header
         title="CCC Quiz"
-        streak={stats.bestStreak || 1}
+        streak={loginStreak}
         points={stats.totalPoints}
       />
 
@@ -102,10 +122,26 @@ export default function QuizHomePage() {
               </h2>
               <p className="text-xs text-emerald-100 mt-1 leading-relaxed">
                 {featuredQuiz
-                  ? `${featuredQuiz.seriesTitle} • ${featuredQuiz.questionCount} live questions from database with instant answer keys!`
-                  : "Database-driven interactive quiz sprint with instant feedback."}
+                  ? `${featuredQuiz.seriesTitle} • ${featuredQuiz.questionCount} live practice questions with instant answer keys!`
+                  : "Interactive quiz sprint with instant feedback."}
               </p>
             </div>
+
+            {featuredQuiz && featuredQuiz.latestAttempt && (
+              <div className="flex items-center gap-2 text-xs pt-0.5">
+                <span className="bg-white/20 backdrop-blur-md px-2.5 py-0.5 rounded-full font-bold">
+                  Last Score: {featuredQuiz.latestAttempt.score} / {featuredQuiz.latestAttempt.totalMarks} ({featuredQuiz.latestAttempt.accuracy}%)
+                </span>
+                <Link
+                  href={`/results/${featuredQuiz.latestAttempt.id}`}
+                  onClick={() => triggerHaptic("selection")}
+                  className="underline text-amber-300 font-bold hover:text-white flex items-center gap-0.5"
+                >
+                  <span>View Result</span>
+                  <ChevronRight className="w-3 h-3" />
+                </Link>
+              </div>
+            )}
 
             {featuredQuiz ? (
               <Link
@@ -113,8 +149,17 @@ export default function QuizHomePage() {
                 onClick={() => triggerHaptic("selection")}
                 className="w-full py-3.5 px-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-sm uppercase tracking-wider border-b-4 border-amber-600 active:border-b-0 active:translate-y-1 shadow-lg shadow-amber-500/30 transition-all flex items-center justify-center gap-2"
               >
-                <Play className="w-4 h-4 fill-current" />
-                <span>Start Quiz ({featuredQuiz.questionCount} Qs)</span>
+                {featuredQuiz.latestAttempt ? (
+                  <>
+                    <RotateCcw className="w-4 h-4" />
+                    <span>Reattempt Quiz ({featuredQuiz.questionCount} Qs)</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4 fill-current" />
+                    <span>Start Quiz ({featuredQuiz.questionCount} Qs)</span>
+                  </>
+                )}
               </Link>
             ) : (
               <div className="py-2.5 text-center text-xs text-emerald-200">
@@ -174,7 +219,7 @@ export default function QuizHomePage() {
           {isLoading ? (
             <div className="space-y-3 py-8 text-center">
               <Loader2 className="w-8 h-8 animate-spin text-primary-600 mx-auto" />
-              <p className="text-xs text-slate-400">Loading quizzes from database...</p>
+              <p className="text-xs text-slate-400">Loading quizzes...</p>
             </div>
           ) : error ? (
             <div className="bg-rose-50 dark:bg-rose-950/40 p-4 rounded-2xl text-center space-y-2">
@@ -208,10 +253,10 @@ export default function QuizHomePage() {
               {quizItems.map((item) => (
                 <div
                   key={item.id}
-                  className="bg-white dark:bg-[#121626] border-2 border-slate-200/80 dark:border-slate-800 border-b-4 rounded-2xl p-4 shadow-xs transition-all hover:border-slate-300 dark:hover:border-slate-700"
+                  className="bg-white dark:bg-[#121626] border-2 border-slate-200/80 dark:border-slate-800 border-b-4 rounded-2xl p-4 shadow-xs transition-all hover:border-slate-300 dark:hover:border-slate-700 space-y-3"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-1 min-w-0">
+                    <div className="space-y-1 min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-primary-100 dark:bg-primary-950/60 text-primary-700 dark:text-primary-300 shrink-0">
                           Quiz
@@ -248,16 +293,61 @@ export default function QuizHomePage() {
                       </div>
                     </div>
 
-                    {/* Start Button */}
-                    <Link
-                      href={`/quiz/${item.id}`}
-                      onClick={() => triggerHaptic("selection")}
-                      className="px-3.5 py-2 rounded-xl bg-primary-600 hover:bg-primary-500 text-white font-black text-xs border-b-3 border-primary-800 active:border-b-0 active:translate-y-1 shadow-md shadow-primary-600/20 shrink-0 flex items-center gap-1 self-center"
-                    >
-                      <span>Play</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </Link>
+                    {/* Action Button: Reattempt if attempted, or Play */}
+                    {item.latestAttempt ? (
+                      <Link
+                        href={`/quiz/${item.id}`}
+                        onClick={() => triggerHaptic("medium")}
+                        className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs border-b-3 border-amber-700 active:border-b-0 active:translate-y-1 shadow-md shadow-amber-500/20 shrink-0 flex items-center gap-1.5 self-center"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Reattempt</span>
+                      </Link>
+                    ) : (
+                      <Link
+                        href={`/quiz/${item.id}`}
+                        onClick={() => triggerHaptic("selection")}
+                        className="px-3.5 py-2 rounded-xl bg-primary-600 hover:bg-primary-500 text-white font-black text-xs border-b-3 border-primary-800 active:border-b-0 active:translate-y-1 shadow-md shadow-primary-600/20 shrink-0 flex items-center gap-1 self-center"
+                      >
+                        <span>Play</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </Link>
+                    )}
                   </div>
+
+                  {/* Inline Result Card if Attempted */}
+                  {item.latestAttempt && (
+                    <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 rounded-xl p-2.5 space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-black text-slate-700 dark:text-slate-300">
+                          Score: {item.latestAttempt.score} / {item.latestAttempt.totalMarks}
+                        </span>
+                        <span
+                          className={`text-[9px] font-black px-1.5 py-0.2 rounded-full border ${
+                            item.latestAttempt.isPassed
+                              ? "bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border-emerald-300"
+                              : "bg-rose-50 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border-rose-300"
+                          }`}
+                        >
+                          {item.latestAttempt.isPassed ? "PASSED ✓" : "NEEDS PRACTICE"}
+                        </span>
+                        <span className="font-black text-emerald-600 dark:text-emerald-400 text-[10px]">
+                          {item.latestAttempt.accuracy}% Accuracy
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-200/50 dark:border-slate-800">
+                        <span>Time: {formatTimer(item.latestAttempt.timeTakenSeconds)}</span>
+                        <Link
+                          href={`/results/${item.latestAttempt.id}`}
+                          onClick={() => triggerHaptic("selection")}
+                          className="text-primary-600 dark:text-primary-400 font-bold hover:underline flex items-center gap-0.5"
+                        >
+                          <span>View Result</span>
+                          <ChevronRight className="w-3 h-3" />
+                        </Link>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

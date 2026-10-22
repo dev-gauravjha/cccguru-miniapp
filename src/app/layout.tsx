@@ -7,7 +7,7 @@ import { BottomNav } from "@/components/layout/BottomNav";
 export const metadata: Metadata = {
   title: "CCCGuru — Telegram Mini App",
   description:
-    "Official NIELIT CCC Exam Preparation & Mock Test Series on Telegram.",
+    "NIELIT CCC Exam Preparation & Mock Test Series on Telegram.",
 };
 
 export const viewport: Viewport = {

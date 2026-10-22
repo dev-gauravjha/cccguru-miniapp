@@ -5,9 +5,6 @@ import { startTestAttempt } from "@/lib/test-engine";
 export async function POST(req: NextRequest) {
   try {
     const session = await getStudentSession();
-    const studentId = session?.studentId || "preview_student_demo";
-    const studentName = session?.name || "Demo Student";
-
     const body = await req.json();
     const { testItemId } = body;
 
@@ -18,7 +15,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const studentId = body.studentId || session?.studentId || "preview_student_demo";
+    const studentName = body.studentName || session?.name || "Demo Student";
+
     const canonicalUserId =
+      body.canonicalUserId ||
       session?.canonicalUserId ||
       (studentId === "preview_student_demo"
         ? "00000000-0000-0000-0000-000000000001"

@@ -332,7 +332,7 @@ export default function ExamPage({ params }: ExamPageProps) {
 
       // 2. Answers and evaluation are safely saved in DB!
       // Update submitting status before ad trigger
-      setSubmittingStatus("Preparing Official Result...");
+      setSubmittingStatus("Preparing Result...");
 
       // 3. Trigger Monetag Post-Submission Interstitial ad
       try {
@@ -528,7 +528,7 @@ export default function ExamPage({ params }: ExamPageProps) {
                 currentQ.difficulty,
               )}`}
             >
-              {currentQ.difficulty || "Medium"} • +100 Points
+              {currentQ.difficulty || "Medium"} • +1 Pt
             </span>
           </div>
 
@@ -559,7 +559,7 @@ export default function ExamPage({ params }: ExamPageProps) {
           )}
 
           {languageMode === "hi" && (
-            <p className="text-base sm:text-lg font-medium text-slate-900 dark:text-slate-100 leading-relaxed font-sans tracking-normal">
+            <p className="text-lg sm:text-xl font-medium text-slate-900 dark:text-slate-100 leading-relaxed font-sans tracking-normal">
               {currentQ.question_hi || currentQ.question_en}
             </p>
           )}
@@ -571,7 +571,7 @@ export default function ExamPage({ params }: ExamPageProps) {
               </p>
               {currentQ.question_hi && (
                 <>
-                  <div className="border-t border-dashed border-slate-200 dark:border-slate-800 my-2" />
+                  <div className="border-t border-dashed border-slate-200 dark:border-slate-800 my-2.5" />
                   <p className="text-base sm:text-lg font-medium text-slate-800 dark:text-slate-200 leading-relaxed font-sans tracking-normal">
                     {currentQ.question_hi}
                   </p>
@@ -604,7 +604,7 @@ export default function ExamPage({ params }: ExamPageProps) {
               >
                 {/* 3D Option Key Pill */}
                 <div
-                  className={`w-8 h-8 rounded-xl font-black text-sm flex items-center justify-center shrink-0 transition-all ${
+                  className={`w-9 h-9 rounded-xl font-black text-sm flex items-center justify-center shrink-0 transition-all ${
                     isSelected
                       ? "bg-primary-600 text-white shadow-xs border-b-2 border-primary-800 animate-pop"
                       : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300/80 dark:border-slate-700 border-b-2"
@@ -613,10 +613,10 @@ export default function ExamPage({ params }: ExamPageProps) {
                   {optKey}
                 </div>
 
-                <div className="flex-1 space-y-1 min-w-0 pt-0.5">
+                <div className="flex-1 space-y-1.5 min-w-0 pt-0.5">
                   {languageMode === "en" && (
                     <div
-                      className={`text-sm sm:text-[15px] font-bold leading-relaxed ${
+                      className={`text-base sm:text-[17px] font-bold leading-relaxed ${
                         isSelected
                           ? "text-primary-950 dark:text-primary-100"
                           : "text-slate-800 dark:text-slate-200"
@@ -628,7 +628,7 @@ export default function ExamPage({ params }: ExamPageProps) {
 
                   {languageMode === "hi" && (
                     <div
-                      className={`text-sm sm:text-[15px] font-medium leading-relaxed font-sans ${
+                      className={`text-base sm:text-[17px] font-medium leading-relaxed font-sans ${
                         isSelected
                           ? "text-primary-900 dark:text-primary-200"
                           : "text-slate-700 dark:text-slate-300"
@@ -642,7 +642,7 @@ export default function ExamPage({ params }: ExamPageProps) {
                     <>
                       {optEn && (
                         <div
-                          className={`text-sm sm:text-[15px] font-bold leading-relaxed ${
+                          className={`text-base sm:text-[17px] font-bold leading-relaxed ${
                             isSelected
                               ? "text-primary-950 dark:text-primary-100"
                               : "text-slate-800 dark:text-slate-200"
@@ -653,7 +653,7 @@ export default function ExamPage({ params }: ExamPageProps) {
                       )}
                       {optHi && (
                         <div
-                          className={`text-sm sm:text-[15px] font-medium leading-relaxed font-sans ${
+                          className={`text-base sm:text-[17px] font-medium leading-relaxed font-sans ${
                             isSelected
                               ? "text-primary-900 dark:text-primary-200"
                               : "text-slate-700 dark:text-slate-300"
@@ -823,7 +823,7 @@ export default function ExamPage({ params }: ExamPageProps) {
                 Submit Test Attempt? 🏁
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                Your answers will be evaluated with official CCC grading and
+                Your answers will be evaluated with CCC grading and
                 points will be added to your profile!
               </p>
             </div>
